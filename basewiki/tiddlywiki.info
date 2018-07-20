@@ -1,0 +1,10 @@
+{
+	"plugins": [
+		"tiddlywiki/codemirror"
+	],	
+	"themes": [
+		"tiddlywiki/seamless",
+		"tiddlywiki/snowwhite",
+		"tiddlywiki/vanilla"
+	]
+}

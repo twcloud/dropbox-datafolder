@@ -1,0 +1,14 @@
+{
+    "tiddlers": [
+        {
+            "file": "../../rawmarkup.js",
+            "prefix":"<script>\n",
+            "suffix":"\n</script>",
+            "fields": {
+                "type": "application/javascript",
+                "title": "$:/plugins/arlen22/dropbox-datafolder/rawmarkup.js",
+                "tags":["$:/tags/RawMarkup"]
+            }
+        }
+    ]
+}
