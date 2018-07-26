@@ -73,12 +73,12 @@ class Chooser {
                 delete this.preload.path;
                 delete this.preload.type;
             }
-            // this.status = new StatusHandler(this.user.profile_photo_url || "");
-            // this.container.appendChild(this.getHeaderElement());
-            // this.container.appendChild(this.getUserProfileElement());
-            // this.container.appendChild(this.getFilesListElement());
-            // this.readFolder("", document.getElementById('twits-files') as Node);
-            this.openFile("/arlennotes/arlen-china/tiddlywiki.info");
+            this.status = new common_1.StatusHandler(this.user.profile_photo_url || "");
+            this.container.appendChild(this.getHeaderElement());
+            this.container.appendChild(this.getUserProfileElement());
+            this.container.appendChild(this.getFilesListElement());
+            this.readFolder("", document.getElementById('twits-files'));
+            // this.openFile("/arlennotes/arlen-china/tiddlywiki.info");
         });
     }
     getHeaderElement() {
