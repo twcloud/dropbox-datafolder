@@ -1,12 +1,22 @@
 {
     "tiddlers": [
         {
-            "file": "../../rawmarkup.js",
+            "file": "../../twits-lib.js",
             "prefix":"<script>\n",
             "suffix":"\n</script>",
             "fields": {
                 "type": "application/javascript",
-                "title": "$:/plugins/arlen22/dropbox-datafolder/rawmarkup.js",
+                "title": "$:/plugins/arlen22/dropbox-datafolder/twits.js",
+                "tags":["$:/tags/RawMarkup"]
+            }
+        },
+        {
+            "file": "../../styles/twits.css",
+            "prefix":"<style>\n",
+            "suffix":"\n</style>",
+            "fields": {
+                "type": "text/css",
+                "title": "$:/plugins/arlen22/dropbox-datafolder/twits.css",
                 "tags":["$:/tags/RawMarkup"]
             }
         }

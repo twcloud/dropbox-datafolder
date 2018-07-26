@@ -1,4 +1,4 @@
-import { files } from '../node_modules/dropbox/src';
+import { files, Dropbox, Error } from '../node_modules/dropbox/src';
 import { OperatorFunction } from '../node_modules/rxjs/internal/types';
 import { Observable } from '../node_modules/rxjs';
 import { reduce } from '../node_modules/rxjs/operators';
@@ -7,6 +7,28 @@ export function dumpToArray<T>(): OperatorFunction<T, T[]> {
 	return (source: Observable<T>) => source.pipe(reduce((n, e) => n.concat(e), [] as T[]));
 }
 
+export type GetMetadataResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
+export function dbx_filesListFolder(client: Dropbox, arg: files.ListFolderArg) {
+	return new Observable<GetMetadataResult>((subs) => {
+		function errHandler(err: Error<files.ListFolderError>){
+			subs.error(err);
+		}
+		function resHandler(res: files.ListFolderResult): any {
+			res.entries.forEach(e => {
+				subs.next(e);
+			})
+			if (res.has_more) {
+				return client.filesListFolderContinue({
+					cursor: res.cursor
+				}).then(resHandler, errHandler);
+			} else {
+				subs.complete();
+			}
+		}
+		client.filesListFolder(arg).then(resHandler, errHandler);
+	})
+
+}
 export interface IOptions {
 
 }
@@ -42,18 +64,13 @@ export interface TiddlyWikiInfo {
 	themes: string[];
 	languages: string[];
 	includeWiki: string[];
+	build: any[];
 }
 export type MetadataEntry = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 export interface DataFolderState {
 	folderPath: string;
 	folderEntries: MetadataEntry[];
-	has: {
-		tiddlers: boolean
-		plugins: boolean
-		themes: boolean
-		languages: boolean
-		info: boolean
-	};
+	has: { [K in "tiddlers" | "plugins" | "themes" | "languages" | "info"]: boolean };
 	info: {
 		stat: files.FileMetadata & { fileBlob: Blob; };
 		json: TiddlyWikiInfo;
@@ -72,7 +89,7 @@ export class StatusHandler {
 	private getStatusPanel() {
 		// if(this.statusPanelCache) return this.statusPanelCache;
 		// debugger;
-		var getElement = function (id, parentNode) {
+		var getElement = function (id: string, parentNode: Node) {
 			parentNode = parentNode || document;
 			var el = document.getElementById(id);
 
@@ -102,16 +119,17 @@ export class StatusHandler {
 		status.status.style.display = "none";
 	}
 
-	setStatusMessage(text) {
+	setStatusMessage(text: string) {
 		var status = this.getStatusPanel();
 		while (status.message.hasChildNodes()) {
-			status.message.removeChild(status.message.firstChild);
+			status.message.removeChild(status.message.firstChild as Node);
 		}
 		status.message.appendChild(document.createTextNode(text));
 	}
 
 }
-
-export function contains(item, array) {
-	return array.indexOf(item) !== -1;
+export function contains<T>(item: any, array: { [K: string]: T }): item is T;
+export function contains<T>(item: any, array: T[]): item is T;
+export function contains<T>(item: any, array: any): item is T {
+	return Array.isArray(array) ? (array.indexOf(item) !== -1) : Object.keys(array).findIndex(k => array[k] === item) !== -1;
 }

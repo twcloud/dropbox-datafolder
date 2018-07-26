@@ -1,4 +1,4 @@
-
+/// <reference path="./dropbox.min.d.ts" />
 
 interface Window {
 	saveChanges: Function;
@@ -62,32 +62,54 @@ namespace wrapper {
 		}
 	}
 
+	interface IOptions {
+
+	}
+	interface IDropboxToken {
+		access_token: string,
+		account_id: string,
+		token_type: "bearer",
+		uid: string
+	}
+	interface IUserInfo {
+		profile_photo_url: string;
+		name: string;
+		orgInfo: string;
+	}
+	interface IFolderEntry { 
+		text: string; 
+		link: string; 
+		path: string; 
+		type: "folder" | "htmlfile" | "datafolder" 
+	}
+	interface IWikiHandlerConstructor{
+		new(): IWikiHandler;
+	}
+	interface IWikiHandler {
+		readUserInfo(): Promise<IUserInfo>;
+		readFolder(path: string): Promise<IFolderEntry[]>;
+		readFile(path: string): void;
+		constructor(token: IDropboxToken, mode: string): void;
+	}
+
+	type MODES = "iframe" | "blob" | "replace";
+
 	class TwitsLoader {
 		iframe: HTMLIFrameElement;
-		user: DropboxTypes.users.FullAccount;
-		client: Dropbox;
+		wiki: IWikiHandler;
+		type: string;
 		status: StatusHandler;
-		apiKeyFull = "gy3j4gsa191p31x"
-		apiKeyApps = "tu8jc7jsdeg55ta"
-		token: {
-			access_token: string,
-			account_id: string,
-			token_type: "bearer",
-			uid: string
-		} = {} as any;
-
-		getKey() {
-			return (this.type === "full" ? this.apiKeyFull : (this.type === "apps" ? this.apiKeyApps : ""))
-		}
 		constructor(
-			public type: string,
-			preload: {[K in "type" | "path" | "user" | "hash" | "method"]: string}
+			options: {[K in "type" | "path" | "user" | "hash" | "method"]: string}
 		) {
-			if (type !== "apps" && type !== "full") throw "type must be either apps or full"
-			this.client = new Dropbox({
-				clientId: this.getKey()
-			});
+			this.type = options.type;
+
 			this.status = new StatusHandler("");
+			this.wiki = new WikiHandler({
+				status: this.status,
+				type: options.type as any,
+				mode: options.method as any
+			})
 			// Authenticate against Dropbox
 			this.status.setStatusMessage("Authenticating with Dropbox...");
 			this.method = preload.method;
@@ -271,6 +293,47 @@ namespace wrapper {
 			}
 		};
 
+
+
+
+
+
+
+	}
+	class WikiHandler implements IWikiHandler {
+		readUserInfo(): Promise<IUserInfo> {
+			throw new Error("Method not implemented.");
+		}
+		readFolder(path: string): Promise<IFolderEntry[]> {
+			throw new Error("Method not implemented.");
+		}
+		readFile(path: string): void {
+			throw new Error("Method not implemented.");
+		}
+		user: DropboxTypes.users.FullAccount;
+		client: Dropbox;
+		status: StatusHandler;
+		type: "apps" | "full";
+		mode: MODES;
+		apiKeyFull = "gy3j4gsa191p31x"
+		apiKeyApps = "tu8jc7jsdeg55ta"
+		token: IDropboxToken = {} as any;
+
+		getKey() {
+			return (this.type === "full" ? this.apiKeyFull : (this.type === "apps" ? this.apiKeyApps : ""))
+		}
+		constructor(options: {
+			status: StatusHandler,
+			type: "apps" | "full",
+			mode: MODES
+		}){
+			this.type = options.type;
+			if (this.type !== "apps" && this.type !== "full") throw "type must be either apps or full"
+
+			this.client = new Dropbox({
+				clientId: this.getKey()
+			});
+		}
 		openFile(path, hash?, isPreload: boolean = false) {
 			// Read the TiddlyWiki file
 			// We can't trust Dropbox to have detected that the file is UTF8, 
@@ -340,9 +403,6 @@ namespace wrapper {
 			}
 			return uni.join("");
 		}
-
-
-
 
 		requestScript(url: string, type: "blob"): Promise<Blob>;
 		requestScript(url: string, type: "text"): Promise<string>;
@@ -435,7 +495,7 @@ namespace wrapper {
 			});
 		}
 		replacePage(data: DropboxTiddlyWiki) {
-			
+
 			const css = document.getElementById('twits-saver-styles').innerHTML
 			document.documentElement.innerHTML = data.text;
 			var style = document.createElement('style');
@@ -473,8 +533,6 @@ namespace wrapper {
 			}
 			return true;
 		}
-
-
 	}
 	class StatusHandler {
 
@@ -650,7 +708,7 @@ namespace wrapper {
 		document.addEventListener("DOMContentLoaded", function (event) {
 			const url = new URL(location.href);
 			const accessType = url.searchParams.get('type');
-			const preload = {
+			const options = {
 				type: decodeURIComponent(url.searchParams.get('type') || ''),
 				path: decodeURIComponent(url.searchParams.get('path') || ''),
 				user: decodeURIComponent(url.searchParams.get('user') || ''),
@@ -659,7 +717,7 @@ namespace wrapper {
 			}
 			if (!accessType) return;
 			document.getElementById('twits-selector').style.display = "none";
-			new TwitsLoader(accessType, preload);
+			new TwitsLoader(accessType, options);
 		}, false);
 	} else if (location.protocol === "blob:") {
 		const sessionStr = sessionStorage.getItem(SESSION_KEY);
