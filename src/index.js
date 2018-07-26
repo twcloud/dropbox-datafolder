@@ -41,13 +41,18 @@ window.addEventListener('load', () => {
         document.body.appendChild(container);
         var chooser = new chooser_1.Chooser(container, options);
         chooser.loadChooser((stat) => {
+            container.style.display = "none";
+            chooser.status.setStatusMessage("Loading...");
             Promise.resolve((typeof stat === "string") ? chooser.client.filesGetMetadata({ path: stat }) : stat).then(stat => {
-                boot_node_async_1.override(window.$tw, chooser.client);
+                let cloud = boot_node_async_1.override(window.$tw, chooser.client);
+                let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount); }, 100);
                 if (!chooser.isFileMetadata(stat)) {
                     chooser.status.setStatusMessage("Invalid file selected");
                     throw "Invalid file selected";
                 }
-                return loader_1.handleDatafolder(chooser, stat);
+                return loader_1.handleDatafolder(chooser, stat).then(() => {
+                    clearInterval(clear);
+                });
             });
         });
     }

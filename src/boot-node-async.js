@@ -333,7 +333,8 @@ function findLibraryItem(name, paths) {
 function loadPlugin(name, paths, pluginType) {
     // first check the installed plugins then check the env directories
     return rxjs_1.from(this.cloud.getNamedPlugin(name, pluginType))
-        .pipe(operators_1.mergeMap(pluginInfo => rxjs_1.of(pluginInfo) || $tw.findLibraryItem(name, paths).pipe(operators_1.mergeMap(pluginPath => $tw.loadPluginFolder(pluginPath)))))
+        .pipe(operators_1.mergeMap(pluginInfo => pluginInfo ? rxjs_1.of(pluginInfo) : $tw.findLibraryItem(name, paths)
+        .pipe(operators_1.mergeMap(pluginPath => $tw.loadPluginFolder(pluginPath)))))
         .pipe(operators_1.tap(pluginInfo => $tw.wiki.addTiddler(pluginInfo)))
         .pipe(operators_1.ignoreElements());
 }
@@ -425,13 +426,13 @@ function loadWikiTiddlers(wikiPath, options) {
                 $tw.wiki.addTiddler(pluginFields);
             }), operators_1.ignoreElements());
         }));
-        return rxjs_1.merge(
+        return rxjs_1.concat(
         // Load includeWikis
         loadIncludesObs, 
         // Load any plugins, themes and languages listed in the wiki info file
         $tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"), $tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"), $tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language"), 
         // Load the wiki folder
-        loadWikiPlugins, loadWiki).pipe(operators_1.reduce(n => n, wikiInfo));
+        loadWiki, loadWikiPlugins).pipe(operators_1.reduce(n => n, wikiInfo));
     }));
 }
 ;
@@ -475,11 +476,14 @@ class CloudObject {
                 this.cache[arg.path] = res;
                 this.requestFinishCount++;
                 return res;
+            }, (err) => {
+                this.requestFinishCount++;
+                throw err;
             });
         }
         else {
             // console.log(arg.path, folder, this.listedFolders, this.cache)
-            this.requestFinishCount++;
+            this.requestStartCount--;
             if (this.listedFolders[folder]) {
                 //find it by joining the folder name with the path_lower name of each item
                 //since a readdir returns the basename of path_lower
@@ -509,6 +513,9 @@ class CloudObject {
             console.log(folder, res);
             this.listedFolders[arg.path] = res;
             this.requestFinishCount++;
+        }), operators_1.catchError((err, obs) => {
+            this.requestFinishCount++;
+            return rxjs_1.throwError(err);
         }));
     }
     filesDownload(arg) {
@@ -519,6 +526,9 @@ class CloudObject {
             this.requestFinishCount++;
             this.cache[res.path_lower] = res;
             return res;
+        }, (err) => {
+            this.requestFinishCount++;
+            throw err;
         });
     }
     getNamedPlugin(name, type) {
@@ -536,16 +546,20 @@ class CloudObject {
                 "text": '{ "tiddlers": {} }'
             });
         return fetch("/assets/tiddlywiki/" + type + "/" + encodeURIComponent(name))
-            .then(res => res.text())
-            .then(data => {
-            // console.log(data);
-            const split = data.indexOf('\n');
-            const meta = JSON.parse(data.slice(0, split)), text = data.slice(split + 2);
-            console.log(split, meta);
-            //don't import the tiddlyweb plugin ()
-            meta.text = text;
-            // if (!text) console.log('no text', data, split, meta, text);
-            return meta;
+            .then(res => {
+            if (res.status > 399)
+                return false;
+            else
+                return res.text().then(data => {
+                    // console.log(data);
+                    const split = data.indexOf('\n');
+                    const meta = JSON.parse(data.slice(0, split)), text = data.slice(split + 2);
+                    console.log(split, meta);
+                    //don't import the tiddlyweb plugin ()
+                    meta.text = text;
+                    // if (!text) console.log('no text', data, split, meta, text);
+                    return meta;
+                });
         });
     }
 }
@@ -566,5 +580,6 @@ function override($tw, client) {
     $tw.loadWikiTiddlers = loadWikiTiddlers.bind(container);
     $tw.loadTiddlersNode = loadTiddlersNode.bind(container);
     $tw.boot.excludeRegExp = $tw.boot.excludeRegExp || /^\.DS_Store$|^.*\.meta$|^\..*\.swp$|^\._.*$|^\.git$|^\.hg$|^\.lock-wscript$|^\.svn$|^\.wafpickle-.*$|^CVS$|^npm-debug\.log$/;
+    return container.cloud;
 }
 exports.override = override;

@@ -1,5 +1,5 @@
 import { files, Dropbox, Error } from 'dropbox';
-import { Observable, of, asyncScheduler, from, empty, merge, zip } from 'rxjs';
+import { Observable, of, asyncScheduler, from, empty, merge, zip, concat, throwError} from 'rxjs';
 import { dbx_filesListFolder, GetMetadataResult, dumpToArray, TiddlyWikiInfo } from './common';
 import { map, mergeMap, reduce, ignoreElements, concatMap, catchError, tap as forEach } from '../node_modules/rxjs/operators';
 import * as path from 'path';
@@ -426,7 +426,8 @@ function loadPlugin(this: $TW, name: string, paths: string[], pluginType: string
 	// first check the installed plugins then check the env directories
 	return from(this.cloud.getNamedPlugin(name, pluginType))
 		.pipe(mergeMap(pluginInfo =>
-			of(pluginInfo) || $tw.findLibraryItem(name, paths).pipe(mergeMap(pluginPath => $tw.loadPluginFolder(pluginPath)))
+			pluginInfo ? of(pluginInfo) : $tw.findLibraryItem(name, paths)
+				.pipe(mergeMap(pluginPath => $tw.loadPluginFolder(pluginPath)))
 		))
 		.pipe(forEach(pluginInfo => $tw.wiki.addTiddler(pluginInfo)))
 		.pipe(ignoreElements());
@@ -534,7 +535,7 @@ function loadWikiTiddlers(this: $TW, wikiPath: string, options?: any): Observabl
 				);
 			})
 		);
-		return merge(
+		return concat(
 			// Load includeWikis
 			loadIncludesObs,
 			// Load any plugins, themes and languages listed in the wiki info file
@@ -542,8 +543,8 @@ function loadWikiTiddlers(this: $TW, wikiPath: string, options?: any): Observabl
 			$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
 			$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language"),
 			// Load the wiki folder
-			loadWikiPlugins,
-			loadWiki
+			loadWiki,
+			loadWikiPlugins
 		).pipe(reduce(n => n, wikiInfo));
 	}))
 };
@@ -589,10 +590,13 @@ export class CloudObject {
 				this.cache[arg.path] = res;
 				this.requestFinishCount++;
 				return res;
+			}, (err) => {
+				this.requestFinishCount++;
+				throw err;
 			})
 		} else {
 			// console.log(arg.path, folder, this.listedFolders, this.cache)
-			this.requestFinishCount++;
+			this.requestStartCount--;
 			if (this.listedFolders[folder]) {
 				//find it by joining the folder name with the path_lower name of each item
 				//since a readdir returns the basename of path_lower
@@ -619,6 +623,9 @@ export class CloudObject {
 			console.log(folder, res)
 			this.listedFolders[arg.path] = res;
 			this.requestFinishCount++;
+		}), catchError((err, obs) => {
+			this.requestFinishCount++;
+			return throwError(err);
 		}));
 	}
 	filesDownload(arg: files.DownloadArg) {
@@ -628,6 +635,9 @@ export class CloudObject {
 			this.requestFinishCount++;
 			this.cache[res.path_lower as string] = res as any;
 			return res;
+		}, (err) => {
+			this.requestFinishCount++;
+			throw err;
 		})
 	}
 	getNamedPlugin(name: string, type: string): Promise<{} | false> {
@@ -645,18 +655,19 @@ export class CloudObject {
 				"text": '{ "tiddlers": {} }'
 			});
 		return fetch("/assets/tiddlywiki/" + type + "/" + encodeURIComponent(name))
-			.then(res => res.text())
-			.then(data => {
-				// console.log(data);
-				const split = data.indexOf('\n');
-				const meta = JSON.parse(data.slice(0, split)),
-					text = data.slice(split + 2);
-				console.log(split, meta);
-				//don't import the tiddlyweb plugin ()
-
-				meta.text = text;
-				// if (!text) console.log('no text', data, split, meta, text);
-				return meta;
+			.then(res => {
+				if(res.status > 399) return false;
+				else return res.text().then(data => {
+					// console.log(data);
+					const split = data.indexOf('\n');
+					const meta = JSON.parse(data.slice(0, split)),
+						text = data.slice(split + 2);
+					console.log(split, meta);
+					//don't import the tiddlyweb plugin ()
+					meta.text = text;
+					// if (!text) console.log('no text', data, split, meta, text);
+					return meta;
+				})
 			})
 	}
 }
@@ -677,4 +688,5 @@ export function override($tw: $TW, client: Dropbox) {
 	$tw.loadWikiTiddlers = loadWikiTiddlers.bind(container);
 	$tw.loadTiddlersNode = loadTiddlersNode.bind(container);
 	$tw.boot.excludeRegExp = $tw.boot.excludeRegExp || /^\.DS_Store$|^.*\.meta$|^\..*\.swp$|^\._.*$|^\.git$|^\.hg$|^\.lock-wscript$|^\.svn$|^\.wafpickle-.*$|^CVS$|^npm-debug\.log$/;
+	return container.cloud;
 }

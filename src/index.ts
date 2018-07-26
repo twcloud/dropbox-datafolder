@@ -3,7 +3,7 @@ import { handleDatafolder } from './loader';
 import { override } from './boot-node-async';
 
 (window as any).$tw = {
-	boot: { suppressBoot: true, files: {} }, 
+	boot: { suppressBoot: true, files: {} },
 	preloadTiddlers: [
 		{ title: "$:/core/modules/savers/put.js", text: "" }
 	]
@@ -42,15 +42,21 @@ window.addEventListener('load', () => {
 		document.body.appendChild(container);
 		var chooser = new Chooser(container, options);
 		chooser.loadChooser((stat) => {
+			container.style.display = "none";
+			chooser.status.setStatusMessage("Loading...");
 			Promise.resolve(
 				(typeof stat === "string") ? chooser.client.filesGetMetadata({ path: stat }) : stat
 			).then(stat => {
-				override((window as any).$tw, chooser.client);
+				let cloud = override((window as any).$tw, chooser.client);
+				let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
 				if (!chooser.isFileMetadata(stat)) {
 					chooser.status.setStatusMessage("Invalid file selected");
 					throw "Invalid file selected";
 				}
-				return handleDatafolder(chooser, stat);
+				return handleDatafolder(chooser, stat).then(() => {
+					clearInterval(clear);
+					
+				})
 			});
 		});
 
