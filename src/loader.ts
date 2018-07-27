@@ -61,6 +61,7 @@ export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
 				state.folderEntries = entries
 				if (!state.has.tiddlers) {
 					chooser.status.setStatusMessage("There is no tiddlers folder");
+					//we can actually create one here since that is the default for a tiddlywiki.info file
 					throw "there is no tiddlers folder";
 				}
 				return dbx_filesListFolder(chooser, state.folderPath + "/tiddlers")

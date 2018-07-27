@@ -536,17 +536,13 @@ function loadWikiTiddlers(this: $TW, wikiPath: string, options?: any): Observabl
 			})
 		);
 		return concat(
-			// Load includeWikis
-			loadIncludesObs,
-			// Load any plugins, themes and languages listed in the wiki info file
-			merge(
+			loadIncludesObs, // Load includeWikis
+			merge( // Load any plugins, themes and languages listed in the wiki info file
 				$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
 				$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
 				$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")
 			),
-			// Load the wiki folder
-			loadWiki,
-			loadWikiPlugins
+			loadWiki, loadWikiPlugins // Load the wiki folder
 		).pipe(reduce(n => n, wikiInfo));
 	}))
 };

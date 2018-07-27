@@ -1,0 +1,5 @@
+title: $:/plugins/tiddlywiki/filesystem/readme
+
+DO NOT DISABLE!!! This plugin runs in the browser to synchronise tiddler changes to and from the cloud account this wiki was loaded from. Disabling this plugin cannot be undone from the browser as this plugin provides the mechanism which syncs changes to the cloud account.
+
+[[Source code|https://github.com/twcloud/dropbox/blob/master/filesystem]]

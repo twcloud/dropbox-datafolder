@@ -181,16 +181,12 @@ export class Chooser {
 			filelist.push.apply(filelist, stats);
 			stats.forEach(e => this.filelist[e.path_lower as string] = e);
 			loadingMessage.innerText = "Loading " + filelist.length + "...";
-
 			if (has_more) return;
-
 			loadingMessage.remove();
-
-			filelist.sort((a, b) => {
+			filelist.sort((a, b) =>
 				//order by isFolder DESC, name ASC
-				return (+this.isFolderMetadata(b) - +this.isFolderMetadata(a))
-					|| a.name.localeCompare(b.name);
-			})
+				(+this.isFolderMetadata(b) - +this.isFolderMetadata(a)) || a.name.localeCompare(b.name)
+			)
 
 			for (var t = 0; t < filelist.length; t++) {
 				const stat = filelist[t];
@@ -207,6 +203,7 @@ export class Chooser {
 						classes.push("twits-file-twinfo");
 					}
 				}
+				
 				var link;
 				classes.push("twits-file-entry");
 				if (this.isFolderMetadata(stat) || (this.isFileMetadata(stat) && (this.isHtmlFile(stat) || this.isTWInfoFile(stat)))) {
@@ -230,7 +227,6 @@ export class Chooser {
 				if (this.isFileMetadata(stat) && this.getHumanSize(stat.size)) {
 					size = document.createElement("span");
 					size.appendChild(document.createTextNode(" (" + this.getHumanSize(stat.size) + ")"));
-					//link.appendChild(size);
 				}
 				listItem.appendChild(link);
 				if (size) listItem.appendChild(size);

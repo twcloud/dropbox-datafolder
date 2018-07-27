@@ -159,11 +159,9 @@ class Chooser {
             if (has_more)
                 return;
             loadingMessage.remove();
-            filelist.sort((a, b) => {
-                //order by isFolder DESC, name ASC
-                return (+this.isFolderMetadata(b) - +this.isFolderMetadata(a))
-                    || a.name.localeCompare(b.name);
-            });
+            filelist.sort((a, b) => 
+            //order by isFolder DESC, name ASC
+            (+this.isFolderMetadata(b) - +this.isFolderMetadata(a)) || a.name.localeCompare(b.name));
             for (var t = 0; t < filelist.length; t++) {
                 const stat = filelist[t];
                 var listItem = document.createElement("li"), classes = [];
@@ -203,7 +201,6 @@ class Chooser {
                 if (this.isFileMetadata(stat) && this.getHumanSize(stat.size)) {
                     size = document.createElement("span");
                     size.appendChild(document.createTextNode(" (" + this.getHumanSize(stat.size) + ")"));
-                    //link.appendChild(size);
                 }
                 listItem.appendChild(link);
                 if (size)

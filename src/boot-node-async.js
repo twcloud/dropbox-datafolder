@@ -426,13 +426,10 @@ function loadWikiTiddlers(wikiPath, options) {
                 $tw.wiki.addTiddler(pluginFields);
             }), operators_1.ignoreElements());
         }));
-        return rxjs_1.concat(
-        // Load includeWikis
-        loadIncludesObs, 
-        // Load any plugins, themes and languages listed in the wiki info file
-        rxjs_1.merge($tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"), $tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"), $tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")), 
-        // Load the wiki folder
-        loadWiki, loadWikiPlugins).pipe(operators_1.reduce(n => n, wikiInfo));
+        return rxjs_1.concat(loadIncludesObs, // Load includeWikis
+        rxjs_1.merge(// Load any plugins, themes and languages listed in the wiki info file
+        $tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"), $tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"), $tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")), loadWiki, loadWikiPlugins // Load the wiki folder
+        ).pipe(operators_1.reduce(n => n, wikiInfo));
     }));
 }
 ;
