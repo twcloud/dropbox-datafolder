@@ -1,5 +1,5 @@
 import { files, Dropbox, Error } from 'dropbox';
-import { Observable, of, asyncScheduler, from, empty, merge, zip, concat, throwError} from 'rxjs';
+import { Observable, of, asyncScheduler, from, empty, merge, zip, concat, throwError } from 'rxjs';
 import { dbx_filesListFolder, GetMetadataResult, dumpToArray, TiddlyWikiInfo } from './common';
 import { map, mergeMap, reduce, ignoreElements, concatMap, catchError, tap as forEach } from '../node_modules/rxjs/operators';
 import * as path from 'path';
@@ -539,9 +539,11 @@ function loadWikiTiddlers(this: $TW, wikiPath: string, options?: any): Observabl
 			// Load includeWikis
 			loadIncludesObs,
 			// Load any plugins, themes and languages listed in the wiki info file
-			$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
-			$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
-			$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language"),
+			merge(
+				$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
+				$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
+				$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")
+			),
 			// Load the wiki folder
 			loadWiki,
 			loadWikiPlugins
@@ -595,21 +597,17 @@ export class CloudObject {
 				throw err;
 			})
 		} else {
-			// console.log(arg.path, folder, this.listedFolders, this.cache)
 			this.requestStartCount--;
 			if (this.listedFolders[folder]) {
-				//find it by joining the folder name with the path_lower name of each item
-				//since a readdir returns the basename of path_lower
 				let index = this.listedFolders[folder].findIndex((e) =>
 					path.join(folder, path.basename(e.path_lower as string)) === arg.path
 				);
-				// console.log(folder, this.listedFolders[folder], arg.path);
 				if (index === -1) return Promise.reject("path_not_found");
 				else return Promise.resolve(this.listedFolders[folder][index]);
 			} else if (this.cache[arg.path]) {
 				return Promise.resolve(this.cache[arg.path]);
 			} else {
-				return Promise.reject("path_not_found")
+				return Promise.reject("path_not_found");
 			}
 		}
 	}
@@ -619,8 +617,6 @@ export class CloudObject {
 		return dbx_filesListFolder(this.client, arg).pipe(forEach((item) => {
 			this.cache[path.join(arg.path, path.basename(item.path_lower as string))] = item;
 		}), dumpToArray(), forEach((res) => {
-			let folder = this.cache[arg.path];
-			console.log(folder, res)
 			this.listedFolders[arg.path] = res;
 			this.requestFinishCount++;
 		}), catchError((err, obs) => {
@@ -640,32 +636,31 @@ export class CloudObject {
 			throw err;
 		})
 	}
+	static readonly tiddlyWebPlugin = {
+		"title": "$:/plugins/tiddlywiki/tiddlyweb",
+		"description": "TiddlyWeb and TiddlySpace components",
+		"author": "JeremyRuston",
+		"core-version": ">=5.0.0",
+		"list": "readme",
+		"version": "5.1.18-prerelease",
+		"plugin-type": "plugin",
+		"dependents": "",
+		"type": "application/json",
+		"text": '{ "tiddlers": {} }'
+	};
 	getNamedPlugin(name: string, type: string): Promise<{} | false> {
+		//if the tiddlyweb adapter is specified, return our own version of it
 		if (type === "plugin" && name === "tiddlywiki/tiddlyweb")
-			return Promise.resolve({
-				"title": "$:/plugins/tiddlywiki/tiddlyweb",
-				"description": "TiddlyWeb and TiddlySpace components",
-				"author": "JeremyRuston",
-				"core-version": ">=5.0.0",
-				"list": "readme",
-				"version": "5.1.18-prerelease",
-				"plugin-type": "plugin",
-				"dependents": "",
-				"type": "application/json",
-				"text": '{ "tiddlers": {} }'
-			});
-		return fetch("/assets/tiddlywiki/" + type + "/" + encodeURIComponent(name))
+			return Promise.resolve(CloudObject.tiddlyWebPlugin);
+		//otherwise fetch it from where it is stored
+		return fetch("twits-5-1-17/" + type + "/" + name + "/plugin.txt")
 			.then(res => {
-				if(res.status > 399) return false;
+				if (res.status > 399) return false;
 				else return res.text().then(data => {
-					// console.log(data);
 					const split = data.indexOf('\n');
 					const meta = JSON.parse(data.slice(0, split)),
 						text = data.slice(split + 2);
-					console.log(split, meta);
-					//don't import the tiddlyweb plugin ()
 					meta.text = text;
-					// if (!text) console.log('no text', data, split, meta, text);
 					return meta;
 				})
 			})

@@ -430,7 +430,7 @@ function loadWikiTiddlers(wikiPath, options) {
         // Load includeWikis
         loadIncludesObs, 
         // Load any plugins, themes and languages listed in the wiki info file
-        $tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"), $tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"), $tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language"), 
+        rxjs_1.merge($tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"), $tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"), $tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")), 
         // Load the wiki folder
         loadWiki, loadWikiPlugins).pipe(operators_1.reduce(n => n, wikiInfo));
     }));
@@ -482,13 +482,9 @@ class CloudObject {
             });
         }
         else {
-            // console.log(arg.path, folder, this.listedFolders, this.cache)
             this.requestStartCount--;
             if (this.listedFolders[folder]) {
-                //find it by joining the folder name with the path_lower name of each item
-                //since a readdir returns the basename of path_lower
                 let index = this.listedFolders[folder].findIndex((e) => path.join(folder, path.basename(e.path_lower)) === arg.path);
-                // console.log(folder, this.listedFolders[folder], arg.path);
                 if (index === -1)
                     return Promise.reject("path_not_found");
                 else
@@ -509,8 +505,6 @@ class CloudObject {
         return common_1.dbx_filesListFolder(this.client, arg).pipe(operators_1.tap((item) => {
             this.cache[path.join(arg.path, path.basename(item.path_lower))] = item;
         }), common_1.dumpToArray(), operators_1.tap((res) => {
-            let folder = this.cache[arg.path];
-            console.log(folder, res);
             this.listedFolders[arg.path] = res;
             this.requestFinishCount++;
         }), operators_1.catchError((err, obs) => {
@@ -532,37 +526,36 @@ class CloudObject {
         });
     }
     getNamedPlugin(name, type) {
+        //if the tiddlyweb adapter is specified, return our own version of it
         if (type === "plugin" && name === "tiddlywiki/tiddlyweb")
-            return Promise.resolve({
-                "title": "$:/plugins/tiddlywiki/tiddlyweb",
-                "description": "TiddlyWeb and TiddlySpace components",
-                "author": "JeremyRuston",
-                "core-version": ">=5.0.0",
-                "list": "readme",
-                "version": "5.1.18-prerelease",
-                "plugin-type": "plugin",
-                "dependents": "",
-                "type": "application/json",
-                "text": '{ "tiddlers": {} }'
-            });
-        return fetch("/assets/tiddlywiki/" + type + "/" + encodeURIComponent(name))
+            return Promise.resolve(CloudObject.tiddlyWebPlugin);
+        //otherwise fetch it from where it is stored
+        return fetch("twits-5-1-17/" + type + "/" + name + "/plugin.txt")
             .then(res => {
             if (res.status > 399)
                 return false;
             else
                 return res.text().then(data => {
-                    // console.log(data);
                     const split = data.indexOf('\n');
                     const meta = JSON.parse(data.slice(0, split)), text = data.slice(split + 2);
-                    console.log(split, meta);
-                    //don't import the tiddlyweb plugin ()
                     meta.text = text;
-                    // if (!text) console.log('no text', data, split, meta, text);
                     return meta;
                 });
         });
     }
 }
+CloudObject.tiddlyWebPlugin = {
+    "title": "$:/plugins/tiddlywiki/tiddlyweb",
+    "description": "TiddlyWeb and TiddlySpace components",
+    "author": "JeremyRuston",
+    "core-version": ">=5.0.0",
+    "list": "readme",
+    "version": "5.1.18-prerelease",
+    "plugin-type": "plugin",
+    "dependents": "",
+    "type": "application/json",
+    "text": '{ "tiddlers": {} }'
+};
 exports.CloudObject = CloudObject;
 function override($tw, client) {
     const container = {
