@@ -1,9 +1,13 @@
 import { files, Dropbox, Error } from 'dropbox';
 import { Observable, of, asyncScheduler, from, empty, merge, zip, concat, throwError, OperatorFunction } from 'rxjs';
-import { dbx_filesListFolder, GetMetadataResult, dumpToArray, TiddlyWikiInfo } from '../src/common';
-import { map, mergeMap, reduce, ignoreElements, concatMap, catchError, zipAll, tap, count, mapTo } from '../node_modules/rxjs/operators';
+import { dbx_filesListFolder, GetMetadataResult, dumpToArray } from '../src/common';
+import {
+	map, mergeMap, reduce, ignoreElements, concatMap, catchError,
+	zipAll, tap, count, mapTo, startWith
+} from '../node_modules/rxjs/operators';
 import * as path from 'path';
 import { Buffer } from "buffer";
+import { exists } from 'fs';
 
 declare var window: Window & { $tw: $TW, env: any };
 
@@ -89,29 +93,32 @@ export type obs_readFile_result_inner<T, U> = [Error<files.DownloadError>, undef
 declare function obs_readFile_inner<T>(filepath: string): Observable<obs_readFile_result_inner<T, Buffer>>;
 declare function obs_readFile_inner<T>(filepath: string, encoding: string): Observable<obs_readFile_result_inner<T, string>>;
 
-export const obs_readFile = (cloud: CloudObject) =>
-	<T>(tag: T = undefined as any) =>
-		((filepath: string, encoding?: string) =>
-			new Observable(subs => {
-				const cb = (err: Error<files.DownloadError> | undefined, data?: Buffer | string) => {
-					subs.next([err, data, tag, filepath]);
-					subs.complete();
-				};
-				// if (encoding) throw "encoding not supported";
-				type R = files.FileMetadata & { fileBlob: Blob };
-				cloud.filesDownload({ path: filepath }).then((data) => {
-					return fetch(URL.createObjectURL((data as R).fileBlob))
-				}).then(res =>
-					res.arrayBuffer()
-				).then(buff => {
-					var newbuff = Buffer.from(buff);
-					cb(undefined, encoding ? newbuff.toString(encoding) : newbuff);
-				}).catch(err => {
-					console.error('readFile error %s', filepath, err);
-					cb(err)
-				})
+export const obs_readFile = (cloud: CloudObject) => <T>(tag: T = undefined as any) => {
+	function obs_readFile_inner(filepath: string): Observable<obs_readFile_result_inner<T, Buffer>>;
+	function obs_readFile_inner(filepath: string, encoding: string): Observable<obs_readFile_result_inner<T, string>>;
+	function obs_readFile_inner(filepath: string, encoding?: string) {
+		return new Observable(subs => {
+			const cb = (err: Error<files.DownloadError> | undefined, data?: Buffer | string) => {
+				subs.next([err, data, tag, filepath]);
+				subs.complete();
+			};
+			// if (encoding) throw "encoding not supported";
+			type R = files.FileMetadata & { fileBlob: Blob };
+			cloud.filesDownload({ path: filepath }).then((data) => {
+				return fetch(URL.createObjectURL((data as R).fileBlob))
+			}).then(res =>
+				res.arrayBuffer()
+			).then(buff => {
+				var newbuff = Buffer.from(buff);
+				cb(undefined, encoding ? newbuff.toString(encoding) : newbuff);
+			}).catch(err => {
+				console.error('readFile error %s', filepath, err);
+				cb(err)
 			})
-		) as typeof obs_readFile_inner;
+		})
+	}
+	return obs_readFile_inner;
+};
 
 
 // export const obs_readFile =
@@ -216,71 +223,71 @@ type ProcessFileInput = { filename: string, isTiddlerFile: boolean, fields: any 
 /**
  * This very crazy function should actually be the correct translation of processfile
  */
-function loadTiddlersFromSpecificationProcessFile(self: $TW, filepath: string) {
-	function getFieldValue(tiddler: {}, name: string, fieldInfo: { source: string }, filename: string, pathname: string) {
-		var value = tiddler[name];
-		switch (fieldInfo.source) {
-			case "filename":
-				return of(path.basename(filename));
-			case "filename-uri-decoded":
-				return of(decodeURIComponent(path.basename(filename)));
-			case "basename":
-				return of(path.basename(filename, path.extname(filename)));
-			case "basename-uri-decoded":
-				return of(decodeURIComponent(path.basename(filename, path.extname(filename))));
-			case "extname":
-				return of(path.extname(filename));
-			case "created":
-				return obs_stat(self.cloud)()(pathname).pipe(map(([err, stat]) => new Date(stat.birthtime)));
-			case "modified":
-				return obs_stat(self.cloud)()(pathname).pipe(map(([err, stat]) => new Date(stat.mtime)));
-			default:
-				return of(value);
-		}
-	}
-
-	return (source: Observable<ProcessFileInput>) => source.pipe(mergeMap(({ filename, isTiddlerFile, fields }) => {
-		var extInfo = $tw.config.fileExtensionInfo[path.extname(filename)],
-			type = (extInfo || {}).type || fields.type || "text/plain",
-			typeInfo = $tw.config.contentTypeInfo[type] || {},
-			pathname = path.resolve(filepath, filename);
-		return zip(
-			obs_readFile(self.cloud)()(pathname, typeInfo.encoding || "utf8"),
-			$tw.loadMetadataForFile(pathname)
-		).pipe(
-			//if there is an error reading the file, then throw it
-			tap(([[err]]) => { throw err }),
-			//deserialize and combine the result
-			map(([[err, text], metadata]) => [
-				((isTiddlerFile)
-					? $tw.wiki.deserializeTiddlers(path.extname(pathname), text, metadata)
-					: [$tw.utils.extend({ text }, metadata || {})]),
-				$tw.utils.extend({}, fields, metadata || {})
-			] as ProcessMatrix),
-			//process the product of the two variables
-			mergeMap(([fileTiddlers, combinedFields]) => obs_tw_each(fileTiddlers).pipe(
-				mergeMap(([tiddler]) => obs_tw_each(combinedFields).pipe(
-					mergeMap(([fieldInfo, name]) =>
-						(typeof fieldInfo === "string" || $tw.utils.isArray(fieldInfo))
-							//if it is simple field info, forward it
-							? of([fieldInfo as any, name])
-							//otherwise expect a field definition object and process it
-							: getFieldValue(tiddler, name, fieldInfo, filename, pathname)
-								.pipe(map(value => [(fieldInfo.prefix || "") + value + (fieldInfo.suffix || ""), name]))),
-					// assign the resulting value to the tiddler
-					tap(([value, name]) => { tiddler[name] = value; })
-				)),
-				//count will only emit once the fileTiddlers have been processed
-				count(),
-				//once we're done, 
-				mapTo({ tiddlers: fileTiddlers })
-			))
-		)
-	}))
-}
 
 function loadTiddlersFromSpecification(this: $TW, filepath: string, excludeRegExp: RegExp): Observable<TiddlerFileInfo> {
-	// const processFile = ;
+	function ProcessFile(self: $TW, filepath: string) {
+		function getFieldValue(tiddler: {}, name: string, fieldInfo: { source: string }, filename: string, pathname: string) {
+			var value = tiddler[name];
+			switch (fieldInfo.source) {
+				case "filename":
+					return of(path.basename(filename));
+				case "filename-uri-decoded":
+					return of(decodeURIComponent(path.basename(filename)));
+				case "basename":
+					return of(path.basename(filename, path.extname(filename)));
+				case "basename-uri-decoded":
+					return of(decodeURIComponent(path.basename(filename, path.extname(filename))));
+				case "extname":
+					return of(path.extname(filename));
+				case "created":
+					return obs_stat(self.cloud)()(pathname).pipe(map(([err, stat]) => new Date(stat.birthtime)));
+				case "modified":
+					return obs_stat(self.cloud)()(pathname).pipe(map(([err, stat]) => new Date(stat.mtime)));
+				default:
+					return of(value);
+			}
+		}
+
+		return (source: Observable<ProcessFileInput>) => source.pipe(mergeMap(({ filename, isTiddlerFile, fields }) => {
+			var extInfo = $tw.config.fileExtensionInfo[path.extname(filename)],
+				type = (extInfo || {}).type || fields.type || "text/plain",
+				typeInfo = $tw.config.contentTypeInfo[type] || {},
+				pathname = path.resolve(filepath, filename);
+			return zip(
+				obs_readFile(self.cloud)()(pathname, typeInfo.encoding || "utf8"),
+				$tw.loadMetadataForFile(pathname)
+			).pipe(
+				//if there is an error reading the file, then throw it
+				tap(([[err]]) => { throw err }),
+				//deserialize and combine the result
+				map(([[err, text], metadata]) => [
+					((isTiddlerFile)
+						? $tw.wiki.deserializeTiddlers(path.extname(pathname), text, metadata)
+						: [$tw.utils.extend({ text }, metadata || {})]),
+					$tw.utils.extend({}, fields, metadata || {})
+				] as ProcessMatrix),
+				//process the product of the two variables
+				mergeMap(([fileTiddlers, combinedFields]) => obs_tw_each(fileTiddlers).pipe(
+					mergeMap(([tiddler]) => obs_tw_each(combinedFields).pipe(
+						mergeMap(([fieldInfo, name]) =>
+							(typeof fieldInfo === "string" || $tw.utils.isArray(fieldInfo))
+								//if it is simple field info, forward it
+								? of([fieldInfo as any, name])
+								//otherwise expect a field definition object and process it
+								: getFieldValue(tiddler, name, fieldInfo, filename, pathname)
+									.pipe(map(value => [(fieldInfo.prefix || "") + value + (fieldInfo.suffix || ""), name]))),
+						// assign the resulting value to the tiddler
+						tap(([value, name]) => { tiddler[name] = value; })
+					)),
+					//count will only emit once the fileTiddlers have been processed
+					count(),
+					//once we're done, 
+					mapTo({ tiddlers: fileTiddlers })
+				))
+			)
+		}))
+	}
+
 	type DirSpec = (string | { path: string, filesRegExp?: string, isTiddlerFile: boolean, fields: any });
 
 	return obs_readFile(this.cloud)()(filepath + path.sep + "tiddlywiki.files", "utf8").pipe(map(([err, data]): any => {
@@ -296,7 +303,7 @@ function loadTiddlersFromSpecification(this: $TW, filepath: string, excludeRegEx
 			} else if (tidInfo.suffix) {
 				tidInfo.fields.text = { suffix: tidInfo.suffix };
 			}
-		}), loadTiddlersFromSpecificationProcessFile(this, filepath)),
+		}), ProcessFile(this, filepath)),
 		//then load the specified directories
 		obs_tw_each(filesInfo.directories as DirSpec[]).pipe(mergeMap(([dirSpec]) => {
 			if (typeof dirSpec === "string") {
@@ -318,11 +325,207 @@ function loadTiddlersFromSpecification(this: $TW, filepath: string, excludeRegEx
 					//map each file to the processFile input arguments
 					map(filename => { return { filename: dirPath + path.sep + filename, isTiddlerFile, fields } }),
 					//process the file to get the tiddlers from it
-					loadTiddlersFromSpecificationProcessFile(this, filepath)
+					ProcessFile(this, filepath)
 				)
 			}
 		}))
 	)))
+}
+
+function loadPluginFolder(this: $TW, filepath_source: Observable<string>, excludeRegExp: RegExp = $tw.boot.excludeRegExp) {
+	return filepath_source.pipe(
+		//if no plugin is found, the source will emit an empty string
+		mergeMap(filepath => !filepath ? empty() : zip(
+			obs_stat(this.cloud)()(filepath),
+			obs_stat(this.cloud)()(filepath + path.sep + "plugin.info"))
+		),
+		//check the stats and return empty if we aren't loading anything
+		mergeMap(([[err1, stat1, tag1, filepath], [err2, stat2, tag2, infoPath]]) => {
+			if (err1 || !stat1.isDirectory()) return empty();
+			if (err2 || !stat2.isFile()) {
+				console.log("Warning: missing plugin.info file in " + filepath);
+				return empty();
+			}
+			return obs_readFile(this.cloud)(filepath)(infoPath, "utf8");
+		}),
+		//parse the plugin info and load the folder
+		mergeMap(([err, plugindata, filepath]) => {
+			if (err) throw new Error("Error: missing plugin.info file in " + filepath)
+			const pluginInfo = JSON.parse(plugindata);
+			pluginInfo.tiddlers = pluginInfo.tiddlers || Object.create(null);
+			return $tw.loadTiddlersFromPath(filepath, excludeRegExp).pipe(
+				tap(pluginFile => {
+					pluginFile.tiddlers.forEach(tiddler => {
+						pluginInfo.tiddlers[tiddler.title] = tiddler;
+					})
+				}),
+				//wait until all the tiddlers have been loaded
+				count(),
+				//finish processing the pluginInfo file
+				map(() => {
+					// Give the plugin the same version number as the core if it doesn't have one
+					if (!("version" in pluginInfo)) {
+						pluginInfo.version = $tw.packageInfo.version;
+					}
+					// Use "plugin" as the plugin-type if we don't have one
+					if (!("plugin-type" in pluginInfo)) {
+						pluginInfo["plugin-type"] = "plugin";
+					}
+					pluginInfo.dependents = pluginInfo.dependents || [];
+					pluginInfo.type = "application/json";
+					// Set plugin text
+					pluginInfo.text = JSON.stringify({ tiddlers: pluginInfo.tiddlers }, null, 4);
+					delete pluginInfo.tiddlers;
+					// Deserialise array fields (currently required for the dependents field)
+					for (var field in pluginInfo) {
+						if ($tw.utils.isArray(pluginInfo[field])) {
+							pluginInfo[field] = $tw.utils.stringifyList(pluginInfo[field]);
+						}
+					}
+					return pluginInfo;
+				})
+			)
+		})
+	);
+}
+
+function findLibraryItem(this: $TW, name: string, paths: string[]) {
+	return from(paths.map(e => path.resolve(e, "./" + name))).pipe(
+		mergeMap(pluginPath => obs_stat(this.cloud)()(pluginPath)),
+		reduce<obs_stat_result<undefined>, string>((n, e) => {
+			const [err, stat, tag, pluginPath] = e;
+			if (!n && !err && stat.isDirectory())
+				return pluginPath;
+			else return "";
+		})
+	)
+}
+
+function loadPlugin(this: $TW, name: string, paths: string[], pluginType: string) {
+	//first check if this is a core plugin
+	return from(this.cloud.getNamedPlugin(name, pluginType)).pipe(
+		//if so, use it, if not, find the plugin folder elsewhere and load it
+		mergeMap(pluginInfo => pluginInfo ? of(pluginInfo) : $tw.loadPluginFolder($tw.findLibraryItem(name, paths))),
+		//add the pluginInfo to the wiki
+		tap(pluginInfo => $tw.wiki.addTiddler(pluginInfo)),
+		//we ignoreElements since we added it to the wiki
+		ignoreElements()
+	);
+}
+
+function getLibraryItemSearchPaths(this: $TW, libraryPath: string, envVar: string) {
+	var pluginPaths: string[] = [], env = window.env && window.env[envVar] as string;
+	if (env) env.split(path.delimiter).map((item) => { if (item) pluginPaths.push(item); });
+	return pluginPaths;
+}
+
+function loadPlugins(this: $TW, plugins: string[], libraryPath: string, envVar: string, type: string) {
+	var pluginPaths = $tw.getLibraryItemSearchPaths(libraryPath, envVar);
+	if (plugins) return from(plugins).pipe(mergeMap(plugin => $tw.loadPlugin(plugin, pluginPaths, type)));
+	else return empty();
+}
+
+function loadWikiTiddlers(this: $TW, wikiPath: string, options: any = {}) {
+	var parentPaths = options.parentPaths || [];
+
+	return obs_readFile(this.cloud)()(path.resolve(wikiPath, $tw.config.wikiInfo), "utf8").pipe(
+		map(([err, data, t, wikiInfoPath]) => {
+			if (err) throw "Error loading the " + $tw.config.wikiInfo + " file";
+			else return JSON.parse(data);
+		}),
+		mergeMap(wikiInfo => {
+			parentPaths = parentPaths.slice(0);
+			parentPaths.push(wikiPath);
+			const includeWikis = obs_tw_each(wikiInfo.includeWikis).pipe(
+				// map(info => typeof info === "string" ? { path: info } : info),
+				map(info => path.resolve(wikiPath, typeof info === "object" ? (info as any).path : info)),
+				mergeMap((resolvedIncludedWikiPath) => {
+					if (parentPaths.indexOf(resolvedIncludedWikiPath) === -1) {
+						return $tw.loadWikiTiddlers(resolvedIncludedWikiPath, {
+							parentPaths: parentPaths,
+							readOnly: true
+						}).pipe(tap((subWikiInfo: any) => {
+							wikiInfo.build = $tw.utils.extend([], subWikiInfo.build, wikiInfo.build);
+						}), ignoreElements())
+					} else {
+						$tw.utils.error("Cannot recursively include wiki " + resolvedIncludedWikiPath);
+						return empty();
+					}
+				})
+			)
+
+			var resolvedWikiPath = path.resolve(wikiPath, $tw.config.wikiTiddlersSubDir);
+			var loadWiki = $tw.loadTiddlersFromPath(resolvedWikiPath).pipe(tap((tiddlerFile) => {
+				if (!options.readOnly && tiddlerFile.filepath) {
+					$tw.utils.each(tiddlerFile.tiddlers, function (tiddler) {
+						$tw.boot.files[tiddler.title] = {
+							filepath: tiddlerFile.filepath,
+							type: tiddlerFile.type,
+							hasMetaFile: tiddlerFile.hasMetaFile
+						};
+					});
+				}
+				$tw.wiki.addTiddlers(tiddlerFile.tiddlers)
+			}), count(), map(() => {
+				// Save the original tiddler file locations if requested
+				var config = wikiInfo.config || {};
+				if (config["retain-original-tiddler-path"]) {
+					var output = {}, relativePath;
+					for (var title in $tw.boot.files) {
+						relativePath = path.relative(resolvedWikiPath, $tw.boot.files[title].filepath);
+						output[title] =
+							path.sep === path.posix.sep ?
+								relativePath :
+								relativePath.split(path.sep).join(path.posix.sep);
+					}
+					$tw.wiki.addTiddler({ title: "$:/config/OriginalTiddlerPaths", type: "application/json", text: JSON.stringify(output) });
+				}
+				// Save the path to the tiddlers folder for the filesystemadaptor
+				$tw.boot.wikiTiddlersPath = path.resolve($tw.boot.wikiPath, config["default-tiddler-location"] || $tw.config.wikiTiddlersSubDir);
+
+			}), ignoreElements());
+
+			// Load any plugins within the wiki folder
+			var loadWikiPlugins = of(
+				["plugins", path.resolve(wikiPath, $tw.config.wikiPluginsSubDir)],
+				["themes", path.resolve(wikiPath, $tw.config.wikiThemesSubDir)],
+				["languages", path.resolve(wikiPath, $tw.config.wikiLanguagesSubDir)]
+			).pipe(
+				mergeMap(([type, wpp]) => obs_exists(this.cloud)(type)(wpp)),
+				mergeMap(([exists, type, wpp]) => exists ? obs_readdir(this.cloud)(type)(wpp) : empty()),
+				mergeMap(([err, pluginFolders, pluginType, wikiPluginsPath]) => err ? empty() : from(pluginFolders).pipe(
+					mergeMap(folder => $tw.loadPluginFolder(of(path.resolve(wikiPluginsPath, "./" + folder)))),
+					tap(pluginFields => $tw.wiki.addTiddler(pluginFields)),
+					ignoreElements()
+				))
+			);
+
+			return concat(
+				includeWikis,
+				merge( // Load any plugins, themes and languages listed in the wiki info file
+					$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
+					$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
+					$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")
+				),
+				loadWiki,
+				loadWikiPlugins
+			).pipe(count(), mapTo(wikiInfo));
+		})
+	)
+}
+function loadTiddlersNode(this: $TW) {
+	// Load the boot tiddlers
+	return merge(
+		$tw.loadTiddlersFromPath($tw.boot.bootPath).pipe(tap(tiddlerFile =>
+			$tw.wiki.addTiddlers(tiddlerFile.tiddlers)
+		)),
+		$tw.loadPluginFolder($tw.boot.corePath).pipe(tap(pluginInfo =>
+			$tw.wiki.addTiddler(pluginInfo)
+		)),
+		$tw.loadWikiTiddlers($tw.boot.wikiPath).pipe(tap(wikiInfo =>
+			$tw.boot.wikiInfo = wikiInfo
+		))
+	).pipe(ignoreElements())
 }
 // =======================================================
 
@@ -369,9 +572,9 @@ export class CloudObject {
 	filesListFolder(arg: files.ListFolderArg) {
 		if (!arg.path) throw new Error("empty path");
 		this.requestStartCount++;
-		return dbx_filesListFolder(this.client, arg).pipe(forEach((item) => {
+		return dbx_filesListFolder(this.client, arg).pipe(tap((item) => {
 			this.cache[path.join(arg.path, path.basename(item.path_lower as string))] = item;
-		}), dumpToArray(), forEach((res) => {
+		}), dumpToArray(), tap((res) => {
 			this.listedFolders[arg.path] = res;
 			this.requestFinishCount++;
 		}), catchError((err, obs) => {

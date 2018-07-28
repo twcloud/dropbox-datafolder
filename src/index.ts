@@ -1,6 +1,6 @@
 import { Chooser } from './chooser';
 import { handleDatafolder } from './loader';
-import { override } from './boot-node-async';
+import { override } from './async';
 
 (window as any).$tw = {
 	boot: { suppressBoot: true, files: {} },
@@ -47,7 +47,7 @@ window.addEventListener('load', () => {
 			Promise.resolve(
 				(typeof stat === "string") ? chooser.client.filesGetMetadata({ path: stat }) : stat
 			).then(stat => {
-				let cloud = override((window as any).$tw, chooser.client);
+				let cloud = override((window as any).$tw, chooser.client).cloud;
 				let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
 				if (!chooser.isFileMetadata(stat)) {
 					chooser.status.setStatusMessage("Invalid file selected");

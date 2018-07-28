@@ -4,13 +4,13 @@ import { Observable } from '../node_modules/rxjs';
 import { reduce } from '../node_modules/rxjs/operators';
 
 export function dumpToArray<T>(): OperatorFunction<T, T[]> {
-	return (source: Observable<T>) => source.pipe(reduce((n, e) => n.concat(e), [] as T[]));
+	return (source: Observable<T>): Observable<T[]> => source.pipe(reduce<T, T[]>((n, e) => { n.push(e); return n; }, [] as T[]));
 }
 
 export type GetMetadataResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
 export function dbx_filesListFolder(client: Dropbox, arg: files.ListFolderArg) {
 	return new Observable<GetMetadataResult>((subs) => {
-		function errHandler(err: Error<files.ListFolderError>){
+		function errHandler(err: Error<files.ListFolderError>) {
 			subs.error(err);
 		}
 		function resHandler(res: files.ListFolderResult): any {
