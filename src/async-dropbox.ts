@@ -1,6 +1,6 @@
 import { files, Dropbox, Error } from 'dropbox';
-import { Observable, of, from, empty, merge, zip, concat, throwError, OperatorFunction } from 'rxjs';
-import { map, reduce, catchError, tap, mergeMap } from 'rxjs/operators';
+import { Observable, of, from, empty, merge, zip, concat, throwError, OperatorFunction, Subject } from 'rxjs';
+import { map, reduce, catchError, tap, mergeMap, concatMap } from 'rxjs/operators';
 import * as path from 'path';
 import { Buffer } from "buffer";
 import { contains } from './common';
@@ -234,25 +234,31 @@ export class Container<T = any> {
 	wikidud: T = undefined as any;
 	constructor([client, path_lower]: [Dropbox, string]) {
 		this.cloud = new CloudObject(client, path_lower);
+		this.requests.asObservable().pipe(concatMap(([name, type, resolve]) => new Observable(subs => {
+			fetch("twits-5-1-17/" + type + "s/" + name + "/plugin.txt").then((res) => {
+				if (res.status < 400) return res.text().then(data => {
+					const split = data.indexOf('\n');
+					const meta = JSON.parse(data.slice(0, split)),
+						text = data.slice(split + 2);
+					meta.text = text;
+					resolve(res);
+					subs.complete();
+				}); 
+				else {
+					resolve(false);
+					subs.complete();
+				}
+			})
+		}))).subscribe();
 	}
+	requests = new Subject();
 	getNamedPlugin(name: string, type: string): Promise<{} | false> {
 		//if the tiddlyweb adapter is specified, return our own version of it
 		if (type === "plugin" && name === "tiddlywiki/tiddlyweb")
 			return Promise.resolve(CloudObject.tiddlyWebPlugin);
 		//otherwise fetch it from where it is stored
-		return fetch("twits-5-1-17/" + type + "s/" + name + "/plugin.txt")
-			.then(res => {
-				if (res.status > 399) return false;
-				else return res.text().then(data => {
-					const split = data.indexOf('\n');
-					const meta = JSON.parse(data.slice(0, split)),
-						text = data.slice(split + 2);
-					meta.text = text;
-					return meta;
-				})
-			})
+		else return new Promise(resolve => this.requests.next([name, type, resolve]));
 	}
-
 }
 
 export const ENV: { [K: string]: string } = (window as any).env || {};

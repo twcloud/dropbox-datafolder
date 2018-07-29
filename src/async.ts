@@ -436,8 +436,11 @@ export function override(_$tw: any, ...args: any[]) {
 		var parentPaths = options.parentPaths || [];
 		var resolvedWikiPath = path.resolve(wikiPath, $tw.config.wikiTiddlersSubDir);
 
-		return obs_readFile(this)()(path.resolve(wikiPath, $tw.config.wikiInfo), "utf8").pipe(
-			map(([err, data, t, wikiInfoPath]) => {
+		return zip(
+			obs_readFile(this)()(path.resolve(wikiPath, $tw.config.wikiInfo), "utf8"),
+			obs_readdir(this)()(path.resolve(wikiPath)) //read this to prime the cache
+		).pipe(
+			map(([[err, data, t, wikiInfoPath]]) => {
 				if (err || !data) throw "Error loading the " + $tw.config.wikiInfo + " file";
 				else return JSON.parse(data);
 			}),

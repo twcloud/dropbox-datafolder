@@ -53,12 +53,13 @@ export class Chooser {
 		};
 		//if the hash has the access_token then it is the dropbox oauth response
 		// this.token = devtoken as any;
-		// this.client.setAccessToken(this.token.access_token);
+		this.token = { } as any;
+		this.client.setAccessToken(this.token.access_token);
 		if (options.hash && options.hash !== "#") {
 			const data = (options.hash[0] === "#" ? options.hash.slice(1) : options.hash)
 				.split('&').map(e => e.split('=').map(f => decodeURIComponent(f)));
 			if (data.find(e => Array.isArray(e) && (e[0] === "access_token"))) {
-				this.token = {} as any;
+
 				data.forEach(e => {
 					this.token[e[0]] = e[1];
 				});

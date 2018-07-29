@@ -16,18 +16,21 @@ export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
 	let cloud = override((window as any).$tw, chooser.client, stat.path_lower).cloud;
 	let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
 	var folderPath = path.dirname(stat.path_lower as string);
-
+	console.time('handleDatafolder')
 	return cloud.filesListFolder({ path: folderPath }).then(files => {
-		let index = files.findIndex(e => Stats.isFileMetadata(e) && e.name === "tiddlers");
+		let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
 		return Promise.resolve((index === -1)
 			? chooser.client.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
 			: {} as any);
 	}).then(() => {
 		return new Promise(resolve => {
+			console.timeEnd('handleDatafolder');
+			console.time('tiddlywikiboot');
 			window.$tw.boot.wikiPath = folderPath;
 			window.$tw.boot.boot(resolve);
 		});
 	}).then(() => { 
+		console.timeEnd('tiddlywikiboot');
 		clearInterval(clear); 
 		chooser.status.clearStatusMessage(); 
 	})
