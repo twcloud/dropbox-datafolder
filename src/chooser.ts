@@ -53,13 +53,12 @@ export class Chooser {
 		};
 		//if the hash has the access_token then it is the dropbox oauth response
 		// this.token = devtoken as any;
-		this.token = { } as any;
-		this.client.setAccessToken(this.token.access_token);
+		this.token = {} as any;
+		// this.client.setAccessToken(this.token.access_token);
 		if (options.hash && options.hash !== "#") {
 			const data = (options.hash[0] === "#" ? options.hash.slice(1) : options.hash)
 				.split('&').map(e => e.split('=').map(f => decodeURIComponent(f)));
 			if (data.find(e => Array.isArray(e) && (e[0] === "access_token"))) {
-
 				data.forEach(e => {
 					this.token[e[0]] = e[1];
 				});
@@ -96,11 +95,11 @@ export class Chooser {
 				delete this.preload.type;
 			}
 			this.status = new StatusHandler(this.user.profile_photo_url || "");
-			// this.container.appendChild(this.getHeaderElement());
-			// this.container.appendChild(this.getUserProfileElement());
-			// this.container.appendChild(this.getFilesListElement());
-			// this.readFolder("", document.getElementById('twits-files') as Node);
-			this.openFile("/arlennotes/arlen-nature/tiddlywiki.info");
+			this.container.appendChild(this.getHeaderElement());
+			this.container.appendChild(this.getUserProfileElement());
+			this.container.appendChild(this.getFilesListElement());
+			this.readFolder("", document.getElementById('twits-files') as Node);
+			// this.openFile("/arlennotes/arlen-nature/tiddlywiki.info");
 		});
 	}
 	getHeaderElement() {
@@ -205,7 +204,7 @@ export class Chooser {
 						classes.push("twits-file-twinfo");
 					}
 				}
-				
+
 				var link;
 				classes.push("twits-file-entry");
 				if (this.isFolderMetadata(stat) || (this.isFileMetadata(stat) && (this.isHtmlFile(stat) || this.isTWInfoFile(stat)))) {
