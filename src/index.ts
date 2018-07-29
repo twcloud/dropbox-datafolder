@@ -1,6 +1,8 @@
 import { Chooser } from './chooser';
 import { handleDatafolder } from './loader';
 import { override } from './async';
+import { Stats } from './async-dropbox';
+import { files } from '../node_modules/dropbox/src';
 
 (window as any).$tw = {
 	boot: { suppressBoot: true, files: {} },
@@ -44,20 +46,8 @@ window.addEventListener('load', () => {
 		chooser.loadChooser((stat) => {
 			container.style.display = "none";
 			chooser.status.setStatusMessage("Loading...");
-			Promise.resolve(
-				(typeof stat === "string") ? chooser.client.filesGetMetadata({ path: stat }) : stat
-			).then(stat => {
-				let cloud = override((window as any).$tw, chooser.client).cloud;
-				let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
-				if (!chooser.isFileMetadata(stat)) {
-					chooser.status.setStatusMessage("Invalid file selected");
-					throw "Invalid file selected";
-				}
-				return handleDatafolder(chooser, stat).then(() => {
-					clearInterval(clear);
-					
-				})
-			});
+			chooser.client.filesDownload({ path: typeof stat === "string" ? stat : stat.path_lower as string })
+				.then(stat => handleDatafolder(chooser, stat));
 		});
 
 	}

@@ -1,66 +1,36 @@
 import { Chooser } from './chooser';
 import { files } from 'dropbox';
 import { contains, DataFolderState, dumpToArray } from './common';
-import { Observable, Subscriber, of, from, OperatorFunction } from 'rxjs';
+import { Observable, Subscriber, of, from, OperatorFunction, zip, empty } from 'rxjs';
 import { reduce, concatMap, map, mapTo, mergeMap, merge, mergeAll, combineAll, tap, count } from 'rxjs/operators';
 import * as path from "path";
+import { override } from './async';
+import { dbx_filesListFolder, Stats } from './async-dropbox';
 
-function dbx_filesListFolder(chooser: Chooser, folderPath: string) {
-	return new Observable<(files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference)>(sub => {
-		chooser.streamFilesListFolder(folderPath, (ents, more) => {
-			ents.forEach(e => sub.next(e));
-			if (!more)
-				sub.complete();
-		});
-	});
+interface MyWindow extends Window {
+	[K: string]: any;
 }
+declare var window: MyWindow;
 
-// type t = OperatorFunction
 export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
-	// if (!stat.path_lower) throw "stat did not contain a path_lower property";
-	var folder = (stat.path_lower as string).split('/');
-	console.log('folder pop', folder.pop());
-	var folderPath = folder.join('/');
-	var state: DataFolderState = {
-		folderPath,
-		folderEntries: [],
-		has: {},
-		info: { stat, json: undefined }
-	} as any;
-	return new Promise(resolve => {
-		//download the tiddlywiki.info file
-		type DownloadResult = files.FileMetadata & { fileBlob: Blob };
-		from(chooser.client.filesDownload({ path: stat.path_lower as string }).then((file) =>
-			fetch(URL.createObjectURL((file as DownloadResult).fileBlob)).then(res => {
-				res.text().then(text => { state.info.json = JSON.parse(text); })
-			})
-		)).pipe(
-			mergeMap(() => dbx_filesListFolder(chooser, folderPath)),
-			tap((ent) => {
-				if (chooser.isFileMetadata(ent)) {
-					if (ent.name === "tiddlywiki.info")
-						state.has["info"] = true;
-				} else if (chooser.isFolderMetadata(ent)) {
-					if (contains(ent.name, ["plugins", "themes", "languages", "tiddlers"])) {
-						///@ts-ignore
-						state.has[ent.name] = true;
-					}
-				}
-				state.folderEntries.push(ent);
-			}),
-			count()
-		).subscribe(() => {
-			var cb = () => {
-				state.has["tiddlers"] = true;
-				(window as any).$tw.boot.wikiPath = state.folderPath;
-				(window as any).$tw.boot.boot(resolve);
-			};
-			console.log('booting', chooser, state);
-			if (!state.has.tiddlers)
-				chooser.client.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).then(cb);
-			else cb();
-		})
-	}).then(() => { chooser.status.clearStatusMessage(); })
+	let cloud = override((window as any).$tw, chooser.client, stat.path_lower).cloud;
+	let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
+	var folderPath = path.dirname(stat.path_lower as string);
+
+	return cloud.filesListFolder({ path: folderPath }).then(files => {
+		let index = files.findIndex(e => Stats.isFileMetadata(e) && e.name === "tiddlers");
+		return Promise.resolve((index === -1)
+			? chooser.client.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
+			: {} as any);
+	}).then(() => {
+		return new Promise(resolve => {
+			window.$tw.boot.wikiPath = folderPath;
+			window.$tw.boot.boot(resolve);
+		});
+	}).then(() => { 
+		clearInterval(clear); 
+		chooser.status.clearStatusMessage(); 
+	})
 }
 
 			//dump the tiddlers into an array

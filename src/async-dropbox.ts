@@ -112,12 +112,8 @@ export const obs_readFile = (cont: Container) => <T>(tag: T = undefined as any) 
 			};
 			// if (encoding) throw "encoding not supported";
 			type R = files.FileMetadata & { fileBlob: Blob };
-			cont.cloud.filesDownload({ path: filepath }).then((data) => {
-				return fetch(URL.createObjectURL((data as R).fileBlob))
-			}).then(res =>
-				res.arrayBuffer()
-			).then(buff => {
-				var newbuff = Buffer.from(buff);
+			cont.cloud.filesDownload({ path: filepath }).then(res => {
+				var newbuff = Buffer.from(res.fileBuffer);
 				cb(undefined, encoding ? newbuff.toString(encoding) : newbuff);
 			}).catch(err => {
 				console.error('readFile error %s', filepath, err);
@@ -131,7 +127,8 @@ export const obs_readFile = (cont: Container) => <T>(tag: T = undefined as any) 
 
 
 export class CloudObject {
-	constructor(public client: Dropbox) {
+	startup: boolean = true;
+	constructor(public client: Dropbox, public folderPath: string) {
 
 	}
 	requestStartCount: number = 0;
@@ -144,10 +141,7 @@ export class CloudObject {
 	listedFolders: { [K: string]: GetMetadataResult[] } = {};
 	filesGetMetadata(arg: files.GetMetadataArg, skipCache: boolean) {
 		if (!arg.path) throw new Error("empty path");
-		this.requestStartCount++;
-		// first we check for a previous stat of this file
 		if (this.cache[arg.path]) return Promise.resolve(this.cache[arg.path]);
-		// next we check if the parent folder was already listed 
 		let dirname = path.dirname(arg.path);
 		let dircache = this.cache[dirname];
 		let dirlist = dircache && this.listedFolders[dircache.path_lower as string];
@@ -158,9 +152,12 @@ export class CloudObject {
 			if (item) return Promise.resolve(item);
 			else return Promise.reject("path_not_found");
 		}
+		this.requestStartCount++;
+
 		//if neither then we retrieve the file
 		return this.client.filesGetMetadata(arg).then(res => {
 			this.cache[arg.path] = res;
+			this.cache[res.path_lower as string] = res;
 			this.requestFinishCount++;
 			return res;
 		}, (err) => {
@@ -174,16 +171,22 @@ export class CloudObject {
 		//cache uses arg.path since it is assumed that a cased path using getMetadata will also do a readdir
 		return new Promise<GetMetadataResult[]>((resolve, reject) => {
 			Promise.resolve(this.cache[arg.path] || this.client.filesGetMetadata({ path: arg.path })).then(meta => {
+				this.cache[arg.path] = meta;
+				this.cache[meta.path_lower as string] = meta;
 				let cached = this.listedFolders[meta.path_lower as string];
-				if (cached) return resolve(cached);
-				else dbx_filesListFolder(this.client, arg).pipe(dumpToArray()).forEach(files => {
-					this.requestFinishCount++;
-					this.listedFolders[meta.path_lower as string] = files;
-					resolve(files);
-				}).catch((err) => {
-					this.requestFinishCount++;
-					reject(err);
-				})
+				if (this.startup && cached) {
+					this.requestStartCount--;
+					return resolve(cached);
+				} else {
+					dbx_filesListFolder(this.client, arg).pipe(dumpToArray()).forEach(files => {
+						this.requestFinishCount++;
+						this.listedFolders[meta.path_lower as string] = files;
+						resolve(files);
+					}).catch((err) => {
+						this.requestFinishCount++;
+						reject(err);
+					})
+				}
 			})
 		})
 	}
@@ -192,11 +195,22 @@ export class CloudObject {
 	filesDownload(arg: files.DownloadArg) {
 		if (!arg.path) throw new Error("empty path");
 		this.requestStartCount++;
-		// we could download the data folder as a zip and cache it that way
-		return this.client.filesDownload(arg).then(res => {
-			this.requestFinishCount++;
-			// this.cache[res.path_lower as string] = res as any;
-			return res;
+		if (this.startup && this.cache[arg.path] && this.cache[arg.path].fileBuffer) {
+			this.requestStartCount--;
+			return Promise.resolve(this.cache[arg.path] as any as files.FileMetadata & { fileBlob: Blob; fileBuffer: Buffer; });
+		}
+		return this.client.filesDownload(arg).then((res: any /* files.FileMetadata */) => {
+			return fetch(URL.createObjectURL(res.fileBlob))
+				.then((response) => response.arrayBuffer())
+				.then((buff) => {
+					this.requestFinishCount++;
+					res.fileBuffer = Buffer.from(buff);
+					if (this.startup) {
+						this.cache[arg.path] = res;
+						this.cache[res.path_lower] = res;
+					}
+					return res as files.FileMetadata & { fileBlob: Blob; fileBuffer: Buffer; }
+				});
 		}, (err) => {
 			this.requestFinishCount++;
 			throw err;
@@ -218,8 +232,8 @@ export class CloudObject {
 export class Container<T = any> {
 	cloud: CloudObject
 	wikidud: T = undefined as any;
-	constructor([client]: [Dropbox]) {
-		this.cloud = new CloudObject(client);
+	constructor([client, path_lower]: [Dropbox, string]) {
+		this.cloud = new CloudObject(client, path_lower);
 	}
 	getNamedPlugin(name: string, type: string): Promise<{} | false> {
 		//if the tiddlyweb adapter is specified, return our own version of it

@@ -345,8 +345,8 @@ export function override(_$tw: any, ...args: any[]) {
 			}))
 		)))
 	}
-
-	function loadPluginFolder(this: $TW, filepath_source: Observable<string>, excludeRegExp: RegExp = $tw.boot.excludeRegExp) {
+	type PluginTiddler = {};
+	function loadPluginFolder(this: $TW, filepath_source: Observable<string>, excludeRegExp: RegExp = $tw.boot.excludeRegExp): Observable<PluginTiddler> {
 		return filepath_source.pipe(
 			//if no plugin is found, the source will emit an empty string
 			mergeMap(filepath => !filepath ? empty() : zip(
@@ -415,8 +415,8 @@ export function override(_$tw: any, ...args: any[]) {
 	function loadPlugin(this: $TW, name: string, paths: string[], pluginType: string) {
 		return from(this.getNamedPlugin(name, pluginType)).pipe(
 			mergeMap(pluginInfo => pluginInfo ? of(pluginInfo) : $tw.loadPluginFolder($tw.findLibraryItem(name, paths))),
-			tap(pluginInfo => $tw.wiki.addTiddler(pluginInfo)),
-			ignoreElements()
+			// tap(pluginInfo => $tw.wiki.addTiddler(pluginInfo)),
+			// ignoreElements()
 		);
 	}
 
@@ -434,6 +434,7 @@ export function override(_$tw: any, ...args: any[]) {
 
 	function loadWikiTiddlers(this: $TW, wikiPath: string, options: any = {}): Observable<TiddlyWikiInfo> {
 		var parentPaths = options.parentPaths || [];
+		var resolvedWikiPath = path.resolve(wikiPath, $tw.config.wikiTiddlersSubDir);
 
 		return obs_readFile(this)()(path.resolve(wikiPath, $tw.config.wikiInfo), "utf8").pipe(
 			map(([err, data, t, wikiInfoPath]) => {
@@ -445,7 +446,7 @@ export function override(_$tw: any, ...args: any[]) {
 				parentPaths.push(wikiPath);
 				const includeWikis = obs_tw_each(wikiInfo.includeWikis).pipe(
 					map(([info]) => path.resolve(wikiPath, typeof info === "object" ? (info as any).path : info)),
-					mergeMap((resolvedIncludedWikiPath) => {
+					concatMap((resolvedIncludedWikiPath) => {
 						if (parentPaths.indexOf(resolvedIncludedWikiPath) === -1) {
 							return $tw.loadWikiTiddlers(resolvedIncludedWikiPath, {
 								parentPaths: parentPaths,
@@ -460,7 +461,6 @@ export function override(_$tw: any, ...args: any[]) {
 					})
 				)
 
-				var resolvedWikiPath = path.resolve(wikiPath, $tw.config.wikiTiddlersSubDir);
 				var loadWiki = $tw.loadTiddlersFromPath(resolvedWikiPath).pipe(tap((tiddlerFile) => {
 					if (!options.readOnly && tiddlerFile.filepath) {
 						$tw.utils.each(tiddlerFile.tiddlers, (tiddler: any) => {
@@ -492,7 +492,8 @@ export function override(_$tw: any, ...args: any[]) {
 				}), ignoreElements());
 
 				// Load any plugins within the wiki folder
-				var loadWikiPlugins = of(
+				var wikiFolderPlugins: any[] = [];
+				var wikiFolderPluginsLoader = of(
 					["plugins", path.resolve(wikiPath, $tw.config.wikiPluginsSubDir)],
 					["themes", path.resolve(wikiPath, $tw.config.wikiThemesSubDir)],
 					["languages", path.resolve(wikiPath, $tw.config.wikiLanguagesSubDir)]
@@ -500,21 +501,31 @@ export function override(_$tw: any, ...args: any[]) {
 					mergeMap(([type, wpp]) => obs_exists(this)(type)(wpp)),
 					mergeMap(([exists, type, wpp]) => exists ? obs_readdir(this)(type)(wpp) : empty()),
 					mergeMap(([err, pluginFolders, pluginType, wikiPluginsPath]) => err ? empty() : from(pluginFolders).pipe(
-						mergeMap(folder => $tw.loadPluginFolder(of(path.resolve(wikiPluginsPath, "./" + folder)))),
-						tap(pluginFields => $tw.wiki.addTiddler(pluginFields)),
-						ignoreElements()
+						mergeMap(folder => $tw.loadPluginFolder(of(path.resolve(wikiPluginsPath, "./" + folder))))
 					))
-				);
+				).forEach((pluginInfo) => {
+					wikiFolderPlugins.push(pluginInfo);
+				});
+
+				var wikiInfoPlugins: any[] = [];
+				var wikiInfoPluginsLoader = merge( // Load any plugins, themes and languages listed in the wiki info file
+					$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
+					$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
+					$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")
+				).forEach((pluginInfo) => {
+					wikiInfoPlugins.push(pluginInfo);
+				});
 
 				return concat(
-					includeWikis,
-					merge( // Load any plugins, themes and languages listed in the wiki info file
-						$tw.loadPlugins(wikiInfo.plugins, $tw.config.pluginsPath, $tw.config.pluginsEnvVar, "plugin"),
-						$tw.loadPlugins(wikiInfo.themes, $tw.config.themesPath, $tw.config.themesEnvVar, "theme"),
-						$tw.loadPlugins(wikiInfo.languages, $tw.config.languagesPath, $tw.config.languagesEnvVar, "language")
-					),
+					Promise.all([
+						wikiInfoPluginsLoader, 
+						wikiFolderPluginsLoader, 
+						includeWikis.forEach(() => {}),
+						obs_readdir(this)()(resolvedWikiPath).forEach(() => {})
+					]),
+					from(wikiInfoPlugins).pipe(tap(plugin => $tw.wiki.addTiddler(plugin))),
 					loadWiki,
-					loadWikiPlugins
+					from(wikiFolderPlugins).pipe(tap(plugin => $tw.wiki.addTiddler(plugin))),
 				).pipe(count(), mapTo(wikiInfo));
 			})
 		)
@@ -523,7 +534,7 @@ export function override(_$tw: any, ...args: any[]) {
 		// Load the boot tiddlers
 		return $tw.loadWikiTiddlers($tw.boot.wikiPath).forEach(wikiInfo => {
 			$tw.boot.wikiInfo = wikiInfo;
-		})
+		});
 		// return merge(
 		// 	$tw.loadTiddlersFromPath($tw.boot.bootPath).pipe(tap(tiddlerFile =>
 		// 		$tw.wiki.addTiddlers(tiddlerFile.tiddlers)
