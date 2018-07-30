@@ -8,10 +8,10 @@ import {
 import * as path from 'path';
 import { Buffer } from "buffer";
 
-import { obs_exists, obs_readdir, obs_readFile, obs_stat, Container, ENV } from './async-dropbox';
+import { obs_exists, obs_readdir, obs_readFile, obs_stat, Container, ENV, CloudObject } from './async-dropbox';
 import { inspect, debug } from 'util';
 import { dumpToArray } from './common';
-
+export { CloudObject };
 type Hashmap<T = any> = { [K: string]: T }
 
 function tlog<T>(a: T): T {
@@ -130,7 +130,7 @@ export function startup_patch($tw: any, options: any = {}) {
 	$tw.modules.applyMethods("tiddlerdeserializer", $tw.Wiki.tiddlerDeserializerModules);
 }
 
-export function override(_$tw: any, ...args: any[]) {
+export function override(_$tw: any, cloud: CloudObject) {
 	var $tw: $TW = _$tw;
 	interface $TW extends Container {
 		loadMetadataForFile: typeof loadMetadataForFile;
@@ -552,7 +552,7 @@ export function override(_$tw: any, ...args: any[]) {
 	}
 	// =======================================================
 
-	const container = new Container<$TW>(args as any);
+	const container = new Container<$TW>(cloud);
 	$tw.findLibraryItem = findLibraryItem.bind(container);
 	$tw.getLibraryItemSearchPaths = getLibraryItemSearchPaths.bind(container);
 	$tw.loadMetadataForFile = loadMetadataForFile.bind(container);

@@ -1,6 +1,6 @@
 import { files, users, Dropbox, auth } from 'dropbox';
-import { StatusHandler } from './common';
-import { devtoken } from '../devtoken';
+import { StatusHandler, dbx_filesListFolder } from './common';
+import { CloudObject } from './async';
 
 const SESSION_KEY = 'twcloud-dropbox-session';
 const ORIGINAL_KEY = 'twcloud-dropbox-original';
@@ -13,26 +13,29 @@ interface IDropboxToken {
 	access_token: string,
 	account_id: string,
 	token_type: "bearer",
-	uid: string
+	uid: string;
+	[K: string]: string;
 }
 interface IPreloadInfo {
 	type: string;
 	path: string;
 	user: string;
 	hash: string;
+	tokenHash: string;
 }
 export class Chooser {
-	client: Dropbox;
+	cloud: CloudObject;
 	user: users.FullAccount = undefined as any;
 	status: StatusHandler;
 	type: "apps" | "full";
-	apiKeyFull = "gy3j4gsa191p31x"
-	apiKeyApps = "tu8jc7jsdeg55ta"
-	token: IDropboxToken
+	token: IDropboxToken = {} as any;
 	filelist: { [K: string]: ListFolderResultEntry } = {};
 	preload: { user: string; path: string; type: "apps" | "full" }
 	getKey() {
-		return (this.type === "full" ? this.apiKeyFull : (this.type === "apps" ? this.apiKeyApps : ""))
+		return (
+			this.type === "full" ? "gy3j4gsa191p31x"
+				: (this.type === "apps" ? "tu8jc7jsdeg55ta"
+					: ""))
 	}
 
 	constructor(public container: HTMLDivElement, options: IPreloadInfo) {
@@ -42,9 +45,7 @@ export class Chooser {
 			throw "type must be apps or full";
 		}
 		this.type = options.type;
-		this.client = new Dropbox({
-			clientId: this.getKey()
-		});
+		this.cloud = new CloudObject(new Dropbox({ clientId: this.getKey() }));
 		//save the preload info in case we don't have a dropbox token
 		this.preload = {
 			user: options.user,
@@ -54,20 +55,17 @@ export class Chooser {
 		//if the hash has the access_token then it is the dropbox oauth response
 		// this.token = devtoken as any;
 		this.token = {} as any;
-		// this.client.setAccessToken(this.token.access_token);
-		if (options.hash && options.hash !== "#") {
-			const data = (options.hash[0] === "#" ? options.hash.slice(1) : options.hash)
-				.split('&').map(e => e.split('=').map(f => decodeURIComponent(f)));
-			if (data.find(e => Array.isArray(e) && (e[0] === "access_token"))) {
-				data.forEach(e => {
-					this.token[e[0]] = e[1];
-				});
-				this.client.setAccessToken(this.token.access_token);
-				//the oauth response will only have a type and hash argument
-				var preload = sessionStorage.getItem(PRELOAD_KEY);
-				if (preload) this.preload = JSON.parse(preload);
-				sessionStorage.setItem(PRELOAD_KEY, '');
-			}
+		if (options.tokenHash) {
+			let hash = options.tokenHash;
+			if (hash.startsWith("#")) hash = hash.slice(1);
+			hash.split('&').map(item => {
+				let part = item.split('=');
+				this.token[part[0]] = part[1];
+			})
+			this.cloud.client.setAccessToken(this.token.access_token);
+			var preload = sessionStorage.getItem(PRELOAD_KEY);
+			if (preload) this.preload = JSON.parse(preload);
+			sessionStorage.setItem(PRELOAD_KEY, '');
 		}
 	}
 
@@ -79,11 +77,21 @@ export class Chooser {
 		if (!this.token.access_token) {
 			if (this.preload.path) sessionStorage.setItem(PRELOAD_KEY, JSON.stringify(this.preload));
 			else sessionStorage.setItem(PRELOAD_KEY, '');
-			location.href = this.client.getAuthenticationUrl(location.origin + location.pathname + "?type=" + this.type);
+			location.href = this.cloud.client.getAuthenticationUrl(
+				encodeURIComponent(location.origin + location.pathname + "?source=oauth2&type=" + this.type),
+				"",
+				"token"
+			);
 			return;
 		}
-		this.client.usersGetCurrentAccount(undefined).then(res => {
-			this.user = res;
+		this.status = new StatusHandler("");
+		this.status.setStatusMessage("Loading account");
+		Promise.all([
+			this.cloud.filesListFolder({ path: "" }),
+			this.cloud.client.usersGetCurrentAccount(undefined)
+		]).then(([files, _user]) => {
+			this.user = _user;
+			this.status = new StatusHandler(this.user.profile_photo_url || "");
 			if (this.preload.user
 				&& (this.user.account_id !== this.preload.user
 					|| this.token.account_id !== this.preload.user
@@ -94,18 +102,25 @@ export class Chooser {
 				delete this.preload.path;
 				delete this.preload.type;
 			}
-			this.status = new StatusHandler(this.user.profile_photo_url || "");
+			if (this.preload.path) return this.openFile(this.preload.path);
+
 			this.container.appendChild(this.getHeaderElement());
 			this.container.appendChild(this.getUserProfileElement());
 			this.container.appendChild(this.getFilesListElement());
-			this.readFolder("", document.getElementById('twits-files') as Node);
+			this.container.appendChild(this.getFooterElement())
+			this.readFolder(files, document.getElementById('twits-files') as Node);
 			// this.openFile("/arlennotes/arlen-nature/tiddlywiki.info");
 		});
 	}
 	getHeaderElement() {
 		const header = document.createElement('div');
 		header.id = "twits-header";
-		header.innerHTML = `<h1>TiddlyWiki in the Sky<br> using Dropbox <span class="twits-beta">beta</span> <br/> (by <a href="https://github.com/Arlen22">@Arlen22</a>*)</h1>`;
+		header.innerHTML = `
+		<h1>
+			<span class="line1">TiddlyWiki in the Sky </span><br>
+			<span class="line2">using Dropbox</span><br/>
+			<span class="line3">(by <a href="https://github.com/Arlen22">@Arlen22</a>*) <span class="twits-beta">beta</span></span>
+		</h1>`;
 		return header;
 	}
 	getUserProfileElement() {
@@ -125,6 +140,24 @@ export class Chooser {
 	getFilesListElement() {
 		const el = document.createElement('div');
 		el.id = "twits-files";
+		return el;
+	}
+	getFooterElement() {
+		const el = document.createElement('div');
+		el.id = "twits-footer";
+		el.innerHTML = `
+	<p>
+		Comments or questions are welcome at
+		<a href="https://github.com/twcloud/dropbox-datafolder">https://github.com/twcloud/dropbox-datafolder</a>
+	</p>
+	<p>
+		*Originally built by <a href="http://twitter.com/Jermolene">@Jermolene</a> for TWC, and updated 
+		by <a href="https://github.com/Arlen22">@Arlen22</a> to use the Dropbox v2 API and work with TW5.
+	</p>
+	<p>
+		**The TiddlyWiki files and datafolders you open have full access to the page, they are not sandboxed in any way.
+	</p>
+`
 		return el;
 	}
 	isFileMetadata(a: any): a is files.FileMetadataReference {
@@ -149,59 +182,55 @@ export class Chooser {
 		return size.toFixed(1) + TAGS[power];
 	}
 
-	streamFilesListFolder(folderpath: string, handler: (entries: ListFolderResultEntry[], has_more: boolean) => void) {
-		const resHandler = (res: files.ListFolderResult): Promise<any> => {
-			handler(res.entries, !!res.has_more);
-			if (res.has_more) {
-				return this.client.filesListFolderContinue({
-					cursor: res.cursor
-				}).then(resHandler)
-			} else {
-				return Promise.resolve();
-			}
-		}
-
-		this.client.filesListFolder({
-			path: folderpath
-		}).then(resHandler);
+	streamFilesListFolder(folderpath: string, handler: (entries: files.MetadataReference[]) => void) {
+		this.cloud.filesListFolder({ path: folderpath }).then((entries) => {
+			handler(entries);
+		})
 	}
 
-	readFolder(folderpath: string, parentNode: Node) {
+	readFolder(folderpath: string | files.MetadataReference[], parentNode: Node) {
 		const pageurl = new URL(location.href);
-		const loadingMessage = document.createElement("li");
+		const loadingMessage = document.createElement("div");
 		loadingMessage.innerText = "Loading...";
 		loadingMessage.classList.add("loading-message");
 
-		var listParent = document.createElement("ol");
+		var listParent = document.createElement("div");
+		listParent.classList.add("twits-folderlist");
 		listParent.appendChild(loadingMessage);
-
 		parentNode.appendChild(listParent);
 
-		const filelist: files.ListFolderResult["entries"] = [];
-		this.streamFilesListFolder(folderpath, (stats, has_more) => {
-			filelist.push.apply(filelist, stats);
-			stats.forEach(e => this.filelist[e.path_lower as string] = e);
-			loadingMessage.innerText = "Loading " + filelist.length + "...";
-			if (has_more) return;
+		// const filelist: files.ListFolderResult["entries"] = [];
+		Promise.resolve(Array.isArray(folderpath)
+			? folderpath : this.cloud.filesListFolder({ path: folderpath })
+		).then((stats) => {
+			// filelist.push.apply(filelist, stats);
+			stats.forEach(e => this.filelist[e.path_lower as string] = e as any);
+			loadingMessage.innerText = "Loading " + stats.length + "...";
 			loadingMessage.remove();
-			filelist.sort((a, b) =>
+			stats.sort((a, b) =>
 				//order by isFolder DESC, name ASC
 				(+this.isFolderMetadata(b) - +this.isFolderMetadata(a)) || a.name.localeCompare(b.name)
 			)
 
-			for (var t = 0; t < filelist.length; t++) {
-				const stat = filelist[t];
+			for (var t = 0; t < stats.length; t++) {
+				const stat = stats[t];
 
-				var listItem = document.createElement("li"),
-					classes = [];
+				var listItem = document.createElement("div"),
+					classes = [], type = "";
 				if (this.isFolderMetadata(stat)) {
 					classes.push("twits-folder");
+					type = "folder"
 				} else if (this.isFileMetadata(stat)) {
 					classes.push("twits-file");
 					if (this.isHtmlFile(stat)) {
 						classes.push("twits-file-html");
+						type = "files/htmlfile"
 					} else if (this.isTWInfoFile(stat)) {
 						classes.push("twits-file-twinfo");
+						type = "datafolder"
+					} else {
+						classes.push("twits-file-other");
+						type = "other";
 					}
 				}
 
@@ -219,18 +248,18 @@ export class Chooser {
 				}
 				link.className = classes.join(" ");
 				var img = document.createElement("img");
-				img.src = "dropbox-icons-broken.gif";
+				img.src = "icons/" + type + ".png";
 				img.style.width = "16px";
 				img.style.height = "16px";
 				link.appendChild(img);
 				link.appendChild(document.createTextNode(stat.name));
-				var size
+				
 				if (this.isFileMetadata(stat) && this.getHumanSize(stat.size)) {
-					size = document.createElement("span");
+					var size = document.createElement("span");
 					size.appendChild(document.createTextNode(" (" + this.getHumanSize(stat.size) + ")"));
+					link.appendChild(size);
 				}
 				listItem.appendChild(link);
-				if (size) listItem.appendChild(size);
 				listParent.appendChild(listItem);
 			}
 		});

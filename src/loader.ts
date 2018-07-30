@@ -5,7 +5,7 @@ import { Observable, Subscriber, of, from, OperatorFunction, zip, empty } from '
 import { reduce, concatMap, map, mapTo, mergeMap, merge, mergeAll, combineAll, tap, count } from 'rxjs/operators';
 import * as path from "path";
 import { override } from './async';
-import { dbx_filesListFolder, Stats } from './async-dropbox';
+import { Stats } from './async-dropbox';
 
 interface MyWindow extends Window {
 	[K: string]: any;
@@ -13,15 +13,19 @@ interface MyWindow extends Window {
 declare var window: MyWindow;
 
 export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
-	let cloud = override((window as any).$tw, chooser.client, stat.path_lower).cloud;
-	let clear = setInterval(() => { chooser.status.setStatusMessage(cloud.requestFinishCount + "/" + cloud.requestStartCount) }, 100);
+	// let cloud = chooser.cloud;
+	override((window as any).$tw, chooser.cloud);
+	let clear = setInterval(() => {
+		chooser.status.setStatusMessage(chooser.cloud.requestFinishCount + "/" + chooser.cloud.requestStartCount)
+	}, 100);
 	var folderPath = path.dirname(stat.path_lower as string);
 	console.time('handleDatafolder')
-	return cloud.filesListFolder({ path: folderPath }).then(files => {
+	return chooser.cloud.filesListFolder({ path: folderPath }).then(files => {
 		let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
-		return Promise.resolve((index === -1)
-			? chooser.client.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
-			: {} as any);
+		if (index === -1)
+			return chooser.cloud.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
+		else
+			return Promise.resolve(true);
 	}).then(() => {
 		return new Promise(resolve => {
 			console.timeEnd('handleDatafolder');
@@ -29,10 +33,10 @@ export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
 			window.$tw.boot.wikiPath = folderPath;
 			window.$tw.boot.boot(resolve);
 		});
-	}).then(() => { 
+	}).then(() => {
 		console.timeEnd('tiddlywikiboot');
-		clearInterval(clear); 
-		chooser.status.clearStatusMessage(); 
+		clearInterval(clear);
+		chooser.status.clearStatusMessage();
 	})
 }
 

@@ -3,36 +3,16 @@ import { Observable, of, from, empty, merge, zip, concat, throwError, OperatorFu
 import { map, reduce, catchError, tap, mergeMap, concatMap } from 'rxjs/operators';
 import * as path from 'path';
 import { Buffer } from "buffer";
-import { contains } from './common';
+import { contains, dbx_filesListFolder } from './common';
 
 export function dumpToArray<T>(): OperatorFunction<T, T[]> {
 	return (source: Observable<T>) => source.pipe(reduce<T, T[]>((n, e) => { n.push(e); return n; }, [] as T[]));
 }
 export type GetMetadataResult = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
-export function dbx_filesListFolder(client: Dropbox, arg: files.ListFolderArg) {
-	return new Observable<GetMetadataResult>((subs) => {
-		function errHandler(err: Error<files.ListFolderError>) {
-			subs.error(err);
-		}
-		function resHandler(res: files.ListFolderResult): any {
-			res.entries.forEach(e => {
-				subs.next(e);
-			})
-			if (res.has_more) {
-				return client.filesListFolderContinue({
-					cursor: res.cursor
-				}).then(resHandler, errHandler);
-			} else {
-				subs.complete();
-			}
-		}
-		client.filesListFolder(arg).then(resHandler, errHandler);
-	})
 
-}
 
 export class Stats {
-	constructor(private meta: GetMetadataResult) {
+	constructor(private meta: files.MetadataReference) {
 
 	}
 	isFile() { return Stats.isFileMetadata(this.meta); };
@@ -56,13 +36,13 @@ export class Stats {
 	get mtime() { return Stats.isFileMetadata(this.meta) ? new Date(this.meta.server_modified) : new Date(0) }
 	get ctime() { return Stats.isFileMetadata(this.meta) ? new Date(this.meta.server_modified) : new Date(0) }
 	get birthtime() { return Stats.isFileMetadata(this.meta) ? new Date(this.meta.server_modified) : new Date(0) }
-	static isFileMetadata(a: GetMetadataResult): a is files.FileMetadataReference {
+	static isFileMetadata(a: files.MetadataReference): a is files.FileMetadataReference {
 		return a[".tag"] === "file";
 	}
-	static isFolderMetadata(a: GetMetadataResult): a is files.FolderMetadataReference {
+	static isFolderMetadata(a: files.MetadataReference): a is files.FolderMetadataReference {
 		return a[".tag"] === "folder";
 	}
-	static map(a: GetMetadataResult): Stats {
+	static map(a: files.MetadataReference): Stats {
 		return new Stats(a);
 	}
 }
@@ -128,7 +108,7 @@ export const obs_readFile = (cont: Container) => <T>(tag: T = undefined as any) 
 
 export class CloudObject {
 	startup: boolean = true;
-	constructor(public client: Dropbox, public folderPath: string) {
+	constructor(public client: Dropbox) {
 
 	}
 	requestStartCount: number = 0;
@@ -137,10 +117,12 @@ export class CloudObject {
 		this.requestStartCount = 0;
 		this.requestFinishCount = 0;
 	}
-	cache: { [K: string]: GetMetadataResult } = {};
-	listedFolders: { [K: string]: GetMetadataResult[] } = {};
+	cache: { [K: string]: files.MetadataReference } = {
+		"/": { path_lower: "/", name: "" } as any
+	};
+	listedFolders: { [K: string]: files.MetadataReference[] } = {};
 	filesGetMetadata(arg: files.GetMetadataArg, skipCache: boolean) {
-		if (!arg.path) throw new Error("empty path");
+		if (typeof arg.path !== "string") throw new Error("empty path");
 		if (this.cache[arg.path]) return Promise.resolve(this.cache[arg.path]);
 		let dirname = path.dirname(arg.path);
 		let dircache = this.cache[dirname];
@@ -166,21 +148,26 @@ export class CloudObject {
 		});
 	}
 	filesListFolder(arg: files.ListFolderArg) {
-		if (!arg.path) throw new Error("empty path");
+		if (typeof arg.path !== "string") throw new Error("empty path");
 		this.requestStartCount++;
 		//cache uses arg.path since it is assumed that a cased path using getMetadata will also do a readdir
-		return new Promise<GetMetadataResult[]>((resolve, reject) => {
-			Promise.resolve(this.cache[arg.path] || this.client.filesGetMetadata({ path: arg.path })).then(meta => {
-				this.cache[arg.path] = meta;
-				this.cache[meta.path_lower as string] = meta;
-				let cached = this.listedFolders[meta.path_lower as string];
+		//we can't meta the root folder so we need some token gymnastics to skip the cache
+		return new Promise<files.MetadataReference[]>((resolve, reject) => {
+			Promise.resolve<files.MetadataReference | false>(
+				arg.path ? this.cache[arg.path] || this.client.filesGetMetadata({ path: arg.path }) : false
+			).then(meta => {
+				if(meta){
+					this.cache[arg.path] = meta;
+					this.cache[meta.path_lower as string] = meta;
+				}
+				let cached = meta && this.listedFolders[meta.path_lower as string];
 				if (this.startup && cached) {
 					this.requestStartCount--;
 					return resolve(cached);
 				} else {
 					dbx_filesListFolder(this.client, arg).pipe(dumpToArray()).forEach(files => {
 						this.requestFinishCount++;
-						this.listedFolders[meta.path_lower as string] = files;
+						if(meta) this.listedFolders[meta.path_lower as string] = files;
 						resolve(files);
 					}).catch((err) => {
 						this.requestFinishCount++;
@@ -193,9 +180,9 @@ export class CloudObject {
 
 
 	filesDownload(arg: files.DownloadArg) {
-		if (!arg.path) throw new Error("empty path");
+		if (typeof arg.path !== "string") throw new Error("empty path");
 		this.requestStartCount++;
-		if (this.startup && this.cache[arg.path] && this.cache[arg.path].fileBuffer) {
+		if (this.startup && this.cache[arg.path] && (this.cache[arg.path] as any).fileBuffer) {
 			this.requestStartCount--;
 			return Promise.resolve(this.cache[arg.path] as any as files.FileMetadata & { fileBlob: Blob; fileBuffer: Buffer; });
 		}
@@ -216,6 +203,17 @@ export class CloudObject {
 			throw err;
 		})
 	}
+	filesCreateFolder(arg: files.CreateFolderArg) {
+		if (typeof arg.path !== "string") throw new Error("empty path");
+		return this.client.filesCreateFolder(arg).then((meta) => {
+			(meta as any)[".tag"] = "folder";
+			return meta as files.FolderMetadataReference
+		}).then((meta) => {
+			this.cache[meta.path_lower as string] = meta;
+			this.cache[arg.path] = meta;
+		})
+	}
+
 	static readonly tiddlyWebPlugin = {
 		"title": "$:/plugins/tiddlywiki/tiddlyweb",
 		"description": "TiddlyWeb and TiddlySpace components",
@@ -230,10 +228,10 @@ export class CloudObject {
 	};
 }
 export class Container<T = any> {
-	cloud: CloudObject
+	// cloud: CloudObject
 	wikidud: T = undefined as any;
-	constructor([client, path_lower]: [Dropbox, string]) {
-		this.cloud = new CloudObject(client, path_lower);
+	constructor(public cloud: CloudObject) {
+		// this.cloud = new CloudObject(client);
 		this.requests.asObservable().pipe(concatMap(([name, type, resolve]) => new Observable(subs => {
 			fetch("twits-5-1-17/" + type + "s/" + name + "/plugin.txt").then((res) => {
 				if (res.status < 400) return res.text().then(data => {
@@ -243,7 +241,7 @@ export class Container<T = any> {
 					meta.text = text;
 					resolve(res);
 					subs.complete();
-				}); 
+				});
 				else {
 					resolve(false);
 					subs.complete();

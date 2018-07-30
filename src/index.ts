@@ -12,13 +12,21 @@ import { files } from '../node_modules/dropbox/src';
 };
 
 const url = new URL(location.href);
-const options = {
+const options: any = {
 	type: decodeURIComponent(url.searchParams.get('type') || ''),
 	path: decodeURIComponent(url.searchParams.get('path') || ''),
-	user: decodeURIComponent(url.searchParams.get('user') || ''),
-	hash: location.hash || ''
+	user: decodeURIComponent(url.searchParams.get('user') || '')
 }
-location.hash = "";
+if (url.searchParams.get('source') === "oauth2") {
+	options.tokenHash = location.hash;
+	console.log(options.tokenHash);
+	console.log(location.href);
+	location.hash = "";
+} else {
+	options.hash = location.hash;
+	options.tokenHash = localStorage.getItem('devtoken') || '';
+}
+
 
 window.addEventListener('load', () => {
 
@@ -40,13 +48,13 @@ window.addEventListener('load', () => {
 		document.body.appendChild(container);
 	} else {
 		var container = document.createElement('div');
-		container.classList.add('twits-chooser');
+		container.id = 'twits-chooser';
 		document.body.appendChild(container);
 		var chooser = new Chooser(container, options);
 		chooser.loadChooser((stat) => {
 			container.style.display = "none";
 			chooser.status.setStatusMessage("Loading...");
-			chooser.client.filesDownload({ path: typeof stat === "string" ? stat : stat.path_lower as string })
+			chooser.cloud.filesDownload({ path: typeof stat === "string" ? stat : stat.path_lower as string })
 				.then(stat => handleDatafolder(chooser, stat));
 		});
 
