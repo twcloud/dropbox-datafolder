@@ -1,3 +1,5 @@
+My work on tools related to TiddlyWiki is entirely a side project for me that does not generate any income. If you want to help cover the cost of the time it takes to make these tools, you are welcome to donate at https://www.paypal.me/Arlen22. 
+
 # TWITS loading data folders
 
 This is my first run on loading data folders from Dropbox. So far it works better than I expected, and even seems fairly snappy on my usually terrible internet connection. Currently it works by completely rewritiing the loadTiddlersNode routine to be asynchronous and then making web requests instead of file requests. Thanks to RxJS, many of these web requests can be made at a time, allowing the browser to queue them and send them back to back. The Rx library requires a fair bit of thought as the paradigm is completely different, but the advantages are tremendous. 
