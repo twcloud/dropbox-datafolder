@@ -86,15 +86,15 @@ export class Chooser {
 			}
 			if (this.preload.path) return this.openFile(this.preload.path);
 
-			this.container.appendChild(this.getHeaderElement());
+			this.container.appendChild(Chooser.getHeaderElement());
 			this.container.appendChild(this.getUserProfileElement());
 			this.container.appendChild(this.getFilesListElement());
-			this.container.appendChild(this.getFooterElement())
+			this.container.appendChild(Chooser.getFooterElement())
 			this.readFolder(files, document.getElementById('twits-files') as Node);
 			// this.openFile("/arlennotes/arlen-nature/tiddlywiki.info");
 		});
 	}
-	getHeaderElement() {
+	static getHeaderElement() {
 		const header = document.createElement('div');
 		header.id = "twits-header";
 		header.innerHTML = `
@@ -136,7 +136,7 @@ export class Chooser {
 		el.id = "twits-files";
 		return el;
 	}
-	getFooterElement() {
+	static getFooterElement() {
 		const el = document.createElement('div');
 		el.id = "twits-footer";
 		el.innerHTML = `

@@ -67,6 +67,44 @@
 #twits-header .line2 { font-size: 0.9em; }
 #twits-header .line3 { font-size: 0.8em; }
 
+#twits-selector .button {
+	padding: .4em 1em;
+	display: block;
+	position: relative;
+	line-height: normal;
+	cursor: pointer;
+	text-align: left;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	overflow: visible;
+	margin-bottom: 0.5em;
+	border-radius: 3px;
+}
+
+#twits-selector {
+	/* margin: auto; */
+	text-align: center;
+	width: 400px;
+}
+
+#twits-selector .access-full,
+#twits-selector .access-apps {
+	display: inline-block;
+	border: solid #ddd thin;
+	color: #007ee5;
+	text-decoration: none;
+}
+
+#twits-selector .access-full {
+	display: inline-block;
+	border: solid #ddd thin;
+	color: white;
+	background-color: #007ee5;
+	text-decoration: none;
+}
+
 #twits-profile {
 	/*padding: 20px;*/
 	border: solid #007ee5 thin;

@@ -29,9 +29,9 @@ if (url.searchParams.get('source') === "oauth2") {
 	});
 	//parse the state, store everything, and redirect back to ?type=%type
 	let { path, user, type, hash } = JSON.parse(decodeURIComponent(options.token.state) || '{}');
-	if(type === options.type){
+	if (type === options.type) {
 		options.path = path;
-		options.user = user;	
+		options.user = user;
 	}
 	if (!hash.startsWith("#")) hash = "#" + hash;
 	sessionStorage.setItem(OPTIONS_CACHE_KEY, JSON.stringify(options));
@@ -46,11 +46,11 @@ if (url.searchParams.get('source') === "oauth2") {
 		if (options.type !== "full" && options.type !== "apps") throw "Invalid option type";
 		location.href = new Dropbox({ clientId: getAppKey(options.type) }).getAuthenticationUrl(
 			encodeURIComponent(location.origin + location.pathname + "?source=oauth2&type=" + options.type),
-			encodeURIComponent(JSON.stringify({ 
-				type: options.type, 
-				path: options.path, 
-				user: options.user, 
-				hash: options.hash 
+			encodeURIComponent(JSON.stringify({
+				type: options.type,
+				path: options.path,
+				user: options.user,
+				hash: options.hash
 			}))
 		)
 	}
@@ -63,18 +63,16 @@ window.addEventListener('load', () => {
 	if (!options.type) {
 		var container = document.createElement('div');
 		container.id = "twits-greeting";
-		container.innerHTML = `
-	<h1>
-		TiddlyWiki in the Sky<br> on Dropbox <span class="twits-beta">beta</span> <br/> (by <a href="https://github.com/Arlen22">@Arlen22</a>*)
-	</h1>
-	<p>
-		This app enables you to directly edit TiddlyWiki data folders and files stored in your Dropbox. 
-		It runs entirely in your browser so we never upload it anywhere except directly to your Dropbox account. 
-	</p>
-	<div id="twits-selector">
-		<a class="access-full button" href="?type=full">Full Dropbox Access</a>
-		<a class="access-apps button" href="?type=apps">Apps Folder Access</a>
-	</div>`;
+		container.appendChild(Chooser.getHeaderElement());
+		{
+			var selector = document.createElement('div');
+			selector.id = "twits-selector";
+			selector.innerHTML = `
+	<a class="access-full button" href="?type=full">Full Dropbox Access</a>
+	<a class="access-apps button" href="?type=apps">Apps Folder Access</a>`
+			container.appendChild(selector);
+		}
+		container.appendChild(Chooser.getFooterElement());
 		document.body.appendChild(container);
 	} else {
 		var container = document.createElement('div');
