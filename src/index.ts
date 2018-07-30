@@ -1,8 +1,8 @@
-import { Chooser } from './chooser';
+import { Chooser, getAppKey } from './chooser';
 import { handleDatafolder } from './loader';
 import { override } from './async';
 import { Stats } from './async-dropbox';
-import { files } from '../node_modules/dropbox/src';
+import { files, Dropbox } from 'dropbox';
 
 (window as any).$tw = {
 	boot: { suppressBoot: true, files: {} },
@@ -12,20 +12,50 @@ import { files } from '../node_modules/dropbox/src';
 };
 
 const url = new URL(location.href);
-const options: any = {
+let options: any = {
 	type: decodeURIComponent(url.searchParams.get('type') || ''),
 	path: decodeURIComponent(url.searchParams.get('path') || ''),
 	user: decodeURIComponent(url.searchParams.get('user') || '')
 }
+const OPTIONS_CACHE_KEY = "twits-options"
 if (url.searchParams.get('source') === "oauth2") {
-	options.tokenHash = location.hash;
-	console.log(options.tokenHash);
-	console.log(location.href);
-	location.hash = "";
+	//parse the oauth token
+	options.token = {};
+	let hashtoken = location.hash;
+	if (hashtoken.startsWith("#")) hashtoken = hashtoken.slice(1);
+	hashtoken.split('&').map((item: any) => {
+		let part = item.split('=');
+		options.token[part[0]] = decodeURIComponent(part[1]);
+	});
+	//parse the state, store everything, and redirect back to ?type=%type
+	let { path, user, type, hash } = JSON.parse(decodeURIComponent(options.token.state) || '{}');
+	if(type === options.type){
+		options.path = path;
+		options.user = user;	
+	}
+	if (!hash.startsWith("#")) hash = "#" + hash;
+	sessionStorage.setItem(OPTIONS_CACHE_KEY, JSON.stringify(options));
+	location.href = location.origin + location.pathname + "?type=" + options.type + hash;
 } else {
+	let store = sessionStorage.getItem(OPTIONS_CACHE_KEY);
+	sessionStorage.setItem(OPTIONS_CACHE_KEY, "");
+	//if we have stored options, ignore anything else
+	if (store) options = JSON.parse(store);
 	options.hash = location.hash;
-	options.tokenHash = localStorage.getItem('devtoken') || '';
+	if (!(options.token && options.token.access_token)) {
+		if (options.type !== "full" && options.type !== "apps") throw "Invalid option type";
+		location.href = new Dropbox({ clientId: getAppKey(options.type) }).getAuthenticationUrl(
+			encodeURIComponent(location.origin + location.pathname + "?source=oauth2&type=" + options.type),
+			encodeURIComponent(JSON.stringify({ 
+				type: options.type, 
+				path: options.path, 
+				user: options.user, 
+				hash: options.hash 
+			}))
+		)
+	}
 }
+
 
 
 window.addEventListener('load', () => {

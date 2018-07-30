@@ -14,6 +14,7 @@ interface IDropboxToken {
 	account_id: string,
 	token_type: "bearer",
 	uid: string;
+	state: string;
 	[K: string]: string;
 }
 interface IPreloadInfo {
@@ -21,8 +22,15 @@ interface IPreloadInfo {
 	path: string;
 	user: string;
 	hash: string;
+	token: { [K: string]: string }
 	tokenHash: string;
 }
+export function getAppKey(type: string) {
+	return (type === "full" ? "gy3j4gsa191p31x"
+		: (type === "apps" ? "tu8jc7jsdeg55ta"
+			: ""));
+}
+
 export class Chooser {
 	cloud: CloudObject;
 	user: users.FullAccount = undefined as any;
@@ -31,12 +39,7 @@ export class Chooser {
 	token: IDropboxToken = {} as any;
 	filelist: { [K: string]: ListFolderResultEntry } = {};
 	preload: { user: string; path: string; type: "apps" | "full" }
-	getKey() {
-		return (
-			this.type === "full" ? "gy3j4gsa191p31x"
-				: (this.type === "apps" ? "tu8jc7jsdeg55ta"
-					: ""))
-	}
+	getKey() { return getAppKey(this.type); }
 
 	constructor(public container: HTMLDivElement, options: IPreloadInfo) {
 		this.status = new StatusHandler("");
@@ -52,38 +55,17 @@ export class Chooser {
 			path: options.path,
 			type: options.type
 		};
-		//if the hash has the access_token then it is the dropbox oauth response
-		// this.token = devtoken as any;
-		this.token = {} as any;
-		if (options.tokenHash) {
-			let hash = options.tokenHash;
-			if (hash.startsWith("#")) hash = hash.slice(1);
-			hash.split('&').map(item => {
-				let part = item.split('=');
-				this.token[part[0]] = part[1];
-			})
-			this.cloud.client.setAccessToken(this.token.access_token);
-			var preload = sessionStorage.getItem(PRELOAD_KEY);
-			if (preload) this.preload = JSON.parse(preload);
-			sessionStorage.setItem(PRELOAD_KEY, '');
-		}
+		this.token = options.token as any;
+		this.cloud.client.setAccessToken(this.token.access_token);
 	}
 
 	openFile: OpenFileCallback = () => { };
 
+
+
 	loadChooser(callback: OpenFileCallback) {
 		this.openFile = callback;
 
-		if (!this.token.access_token) {
-			if (this.preload.path) sessionStorage.setItem(PRELOAD_KEY, JSON.stringify(this.preload));
-			else sessionStorage.setItem(PRELOAD_KEY, '');
-			location.href = this.cloud.client.getAuthenticationUrl(
-				encodeURIComponent(location.origin + location.pathname + "?source=oauth2&type=" + this.type),
-				"",
-				"token"
-			);
-			return;
-		}
 		this.status = new StatusHandler("");
 		this.status.setStatusMessage("Loading account");
 		Promise.all([
@@ -132,7 +114,7 @@ export class Chooser {
 			There is no code to save changes back to the server yet, so fear not.
 		</h3>
 		`;
-		
+
 		return header;
 	}
 	getUserProfileElement() {
@@ -265,7 +247,7 @@ export class Chooser {
 				img.style.height = "16px";
 				link.appendChild(img);
 				link.appendChild(document.createTextNode(stat.name));
-				
+
 				if (this.isFileMetadata(stat) && this.getHumanSize(stat.size)) {
 					var size = document.createElement("span");
 					size.appendChild(document.createTextNode(" (" + this.getHumanSize(stat.size) + ")"));
