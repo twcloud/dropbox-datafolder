@@ -42,8 +42,11 @@ if (url.searchParams.get('source') === "oauth2") {
 	//if we have stored options, ignore anything else
 	if (store) options = JSON.parse(store);
 	options.hash = location.hash;
+
 	if (options.type && !(options.token && options.token.access_token)) {
 		if (options.type !== "full" && options.type !== "apps") throw "Invalid option type";
+		var token = localStorage.getItem('twits-devtoken') || '';
+		if(token) options.token = { access_token: token };
 		location.href = new Dropbox({ clientId: getAppKey(options.type) }).getAuthenticationUrl(
 			encodeURIComponent(location.origin + location.pathname + "?source=oauth2&type=" + options.type),
 			encodeURIComponent(JSON.stringify({
