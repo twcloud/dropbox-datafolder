@@ -204,6 +204,7 @@ export class CloudObject {
 		})
 	}
 	filesCreateFolder(arg: files.CreateFolderArg) {
+		throw "Method not implemented";
 		if (typeof arg.path !== "string") throw new Error("empty path");
 		return this.client.filesCreateFolder(arg).then((meta) => {
 			(meta as any)[".tag"] = "folder";

@@ -21,10 +21,11 @@ export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
 	var folderPath = path.dirname(stat.path_lower as string);
 	console.time('handleDatafolder')
 	return chooser.cloud.filesListFolder({ path: folderPath }).then(files => {
-		let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
-		if (index === -1)
-			return chooser.cloud.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
-		else
+		// for now let's not make any changes until I've tested everything
+		// let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
+		// if (index === -1)
+		// 	return chooser.cloud.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
+		// else
 			return Promise.resolve(true);
 	}).then(() => {
 		return new Promise(resolve => {

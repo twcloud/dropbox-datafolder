@@ -120,7 +120,19 @@ export class Chooser {
 			<span class="line1">TiddlyWiki in the Sky </span><br>
 			<span class="line2">using Dropbox</span><br/>
 			<span class="line3">(by <a href="https://github.com/Arlen22">@Arlen22</a>*) <span class="twits-beta">beta</span></span>
-		</h1>`;
+		</h1>
+		<p>
+			The data folder will be loaded directly into the browser rather than being loaded into the server 
+			and then served to the browser. This is akin to calling the server command with the template $:/core/save/all 
+			(which is the default for the server command). There may be a few edge cases where this might not work, but it 
+			should be fine for a standard data folder with core plugins.
+		</p>
+		<h3>
+			Data folders loaded here are readonly until I get the bugs worked out. 
+			There is no code to save changes back to the server yet, so fear not.
+		</h3>
+		`;
+		
 		return header;
 	}
 	getUserProfileElement() {
