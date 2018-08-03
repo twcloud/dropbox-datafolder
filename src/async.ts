@@ -1,17 +1,11 @@
-// import { files, Dropbox, Error } from 'dropbox';
 import { Observable, of, asyncScheduler, from, empty, merge, zip, concat, throwError, OperatorFunction } from 'rxjs';
-// import { dbx_filesListFolder, GetMetadataResult, dumpToArray, TiddlyWikiInfo } from '../src/common';
 import {
 	map, mergeMap, reduce, ignoreElements, concatMap, catchError,
 	zipAll, tap, count, mapTo, startWith, find, first
 } from 'rxjs/operators';
 import * as path from 'path';
-import { Buffer } from "buffer";
+import { FileFuncs } from './async-types';
 
-import { obs_exists, obs_readdir, obs_readFile, obs_stat, Container, ENV, CloudObject } from './async-dropbox';
-import { inspect, debug } from 'util';
-import { dumpToArray } from './common';
-export { CloudObject };
 type Hashmap<T = any> = { [K: string]: T }
 
 function tlog<T>(a: T): T {
@@ -129,25 +123,44 @@ export function startup_patch($tw: any, options: any = {}) {
 	$tw.Wiki.tiddlerDeserializerModules = Object.create(null);
 	$tw.modules.applyMethods("tiddlerdeserializer", $tw.Wiki.tiddlerDeserializerModules);
 }
-
-export function override(_$tw: any, cloud: CloudObject) {
-	var $tw: $TW = _$tw;
-	interface $TW extends Container {
-		loadMetadataForFile: typeof loadMetadataForFile;
-		loadTiddlersFromFile: typeof loadTiddlersFromFile;
-		loadTiddlersFromPath: typeof loadTiddlersFromPath;
-		loadTiddlersFromSpecification: typeof loadTiddlersFromSpecification;
-		loadPluginFolder: typeof loadPluginFolder;
-		findLibraryItem: typeof findLibraryItem;
-		loadPlugin: typeof loadPlugin;
-		getLibraryItemSearchPaths: typeof getLibraryItemSearchPaths;
-		loadPlugins: typeof loadPlugins;
-		loadWikiTiddlers: typeof loadWikiTiddlers;
-		loadTiddlersNode: typeof loadTiddlersNode;
-		[K: string]: any;
-	}
+export type Container = {};
 
 
+
+export interface TiddlerFileInfo {
+	tiddlers: any[],
+	filepath?: string,
+	type?: string,
+	hasMetaFile?: boolean
+}
+export interface TiddlyWikiInfo {
+	plugins: string[];
+	themes: string[];
+	languages: string[];
+	includeWiki: string[];
+	build: any[];
+}
+export type PluginTiddler = {};
+
+
+const isArray = Array.isArray;
+
+export interface $TW extends Container {
+	loadTiddlersFromFile(this: $TW, filepath: string, fields: any): Observable<TiddlerFileInfo>;
+	loadMetadataForFile(this: $TW, filepath: string): Observable<any>;
+	loadTiddlersFromPath(this: $TW, filepath: string, excludeRegExp?: RegExp): Observable<TiddlerFileInfo>;
+	loadTiddlersFromSpecification(this: $TW, filepath: string, excludeRegExp: RegExp): Observable<TiddlerFileInfo>;
+	loadPluginFolder(this: $TW, filepath_source: Observable<string>, excludeRegExp?: RegExp): Observable<PluginTiddler>;
+	findLibraryItem(this: $TW, name: string, paths: string[]): Observable<string>;
+	loadPlugin(this: $TW, name: string, paths: string[], pluginType: string): Observable<{}>;
+	getLibraryItemSearchPaths(this: $TW, libraryPath: string, envVar: string): string[];
+	loadPlugins(this: $TW, plugins: string[], libraryPath: string, envVar: string, type: string): Observable<{}>;
+	loadWikiTiddlers(this: $TW, wikiPath: string, options?: any): Observable<TiddlyWikiInfo>;
+	loadTiddlersNode(this: $TW): Promise<void>;
+	override(_$tw: any, container: Container, closures: FileFuncs): void;
+	[K: string]: any;
+}
+export function override(_$tw: any, container: Container, closures: FileFuncs) {
 	// declare const $tw: $TW;
 	function obs_tw_each<T>(obj: { [K: string]: T }): Observable<[T, string]>;
 	function obs_tw_each<T>(obj: T[]): Observable<[T, number]>;
@@ -157,23 +170,13 @@ export function override(_$tw: any, cloud: CloudObject) {
 			subs.complete();
 		});
 	}
-
-	const isArray = Array.isArray;
+	var $tw: $TW = _$tw;
+	const { obs_exists, obs_readFile, obs_stat, ENV } = closures;
+	const obs_readdir = (a: any) => <T>(b: T = undefined as any) => (c: string) =>
+		closures.obs_readdir(a)(b)(c).pipe(map(([err, files, tag, dirpath]) =>
+			[err, files.map(f => f.basename), tag, dirpath] as [Error, string[], T, string]
+		))
 	// =======================================================
-
-	interface TiddlerFileInfo {
-		tiddlers: any[],
-		filepath?: string,
-		type?: string,
-		hasMetaFile?: boolean
-	}
-	interface TiddlyWikiInfo {
-		plugins: string[];
-		themes: string[];
-		languages: string[];
-		includeWiki: string[];
-		build: any[];
-	}
 	function loadTiddlersFromFile(this: $TW, filepath: string, fields: any) {
 		//get the type info for this extension
 		var ext = path.extname(filepath),
@@ -345,7 +348,7 @@ export function override(_$tw: any, cloud: CloudObject) {
 			}))
 		)))
 	}
-	type PluginTiddler = {};
+
 	function loadPluginFolder(this: $TW, filepath_source: Observable<string>, excludeRegExp: RegExp = $tw.boot.excludeRegExp): Observable<PluginTiddler> {
 		return filepath_source.pipe(
 			//if no plugin is found, the source will emit an empty string
@@ -422,7 +425,7 @@ export function override(_$tw: any, cloud: CloudObject) {
 
 	function getLibraryItemSearchPaths(this: $TW, libraryPath: string, envVar: string) {
 		var pluginPaths: string[] = [/* path.resolve($tw.boot.corePath, libraryPath) */], env = ENV[envVar];
-		if (env) env.split(path.delimiter).map((item) => { if (item) pluginPaths.push(item); });
+		if (env) env.split(path.delimiter).map((item: any) => { if (item) pluginPaths.push(item); });
 		return pluginPaths;
 	}
 
@@ -521,10 +524,10 @@ export function override(_$tw: any, cloud: CloudObject) {
 
 				return concat(
 					Promise.all([
-						wikiInfoPluginsLoader, 
-						wikiFolderPluginsLoader, 
-						includeWikis.forEach(() => {}),
-						obs_readdir(this)()(resolvedWikiPath).forEach(() => {})
+						wikiInfoPluginsLoader,
+						wikiFolderPluginsLoader,
+						includeWikis.forEach(() => { }),
+						obs_readdir(this)()(resolvedWikiPath).forEach(() => { })
 					]),
 					from(wikiInfoPlugins).pipe(tap(plugin => $tw.wiki.addTiddler(plugin))),
 					loadWiki,
@@ -550,21 +553,41 @@ export function override(_$tw: any, cloud: CloudObject) {
 		// 	))
 		// ).pipe(ignoreElements())
 	}
-	// =======================================================
 
-	const container = new Container<$TW>(cloud);
-	$tw.findLibraryItem = findLibraryItem.bind(container);
-	$tw.getLibraryItemSearchPaths = getLibraryItemSearchPaths.bind(container);
-	$tw.loadMetadataForFile = loadMetadataForFile.bind(container);
-	$tw.loadPlugin = loadPlugin.bind(container);
-	$tw.loadPluginFolder = loadPluginFolder.bind(container);
-	$tw.loadPlugins = loadPlugins.bind(container);
-	$tw.loadTiddlersFromFile = loadTiddlersFromFile.bind(container);
-	$tw.loadTiddlersFromPath = loadTiddlersFromPath.bind(container);
-	$tw.loadTiddlersFromSpecification = loadTiddlersFromSpecification.bind(container);
-	$tw.loadWikiTiddlers = loadWikiTiddlers.bind(container);
-	$tw.loadTiddlersNode = loadTiddlersNode.bind(container);
+	$tw.findLibraryItem =
+		findLibraryItem.bind(container) as
+		typeof findLibraryItem;
+	$tw.getLibraryItemSearchPaths =
+		getLibraryItemSearchPaths.bind(container) as
+		typeof getLibraryItemSearchPaths;
+	$tw.loadMetadataForFile =
+		loadMetadataForFile.bind(container) as
+		typeof loadMetadataForFile;
+	$tw.loadPlugin =
+		loadPlugin.bind(container) as
+		typeof loadPlugin;
+	$tw.loadPluginFolder =
+		loadPluginFolder.bind(container) as
+		typeof loadPluginFolder;
+	$tw.loadPlugins =
+		loadPlugins.bind(container) as
+		typeof loadPlugins;
+	$tw.loadTiddlersFromFile =
+		loadTiddlersFromFile.bind(container) as
+		typeof loadTiddlersFromFile;
+	$tw.loadTiddlersFromPath =
+		loadTiddlersFromPath.bind(container) as
+		typeof loadTiddlersFromPath;
+	$tw.loadTiddlersFromSpecification =
+		loadTiddlersFromSpecification.bind(container) as
+		typeof loadTiddlersFromSpecification;
+	$tw.loadWikiTiddlers =
+		loadWikiTiddlers.bind(container) as
+		typeof loadWikiTiddlers;
+	$tw.loadTiddlersNode =
+		loadTiddlersNode.bind(container) as
+		typeof loadTiddlersNode;
 	$tw.boot.excludeRegExp = $tw.boot.excludeRegExp || /^\.DS_Store$|^.*\.meta$|^\..*\.swp$|^\._.*$|^\.git$|^\.hg$|^\.lock-wscript$|^\.svn$|^\.wafpickle-.*$|^CVS$|^npm-debug\.log$/;
-	return container;
+	return $tw;
 }
 

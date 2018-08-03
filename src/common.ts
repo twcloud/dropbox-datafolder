@@ -32,31 +32,27 @@ export function dbx_filesListFolder(client: Dropbox, arg: files.ListFolderArg) {
 export interface IOptions {
 
 }
-export interface IDropboxToken {
+interface IDropboxToken {
 	access_token: string,
 	account_id: string,
 	token_type: "bearer",
-	uid: string
+	uid: string;
+	state: string;
+	[K: string]: string;
+}
+export interface IPreloadInfo {
+	type: string;
+	path: string;
+	user: string;
+	hash: string;
+	token: { [K: string]: string }
+	tokenHash: string;
 }
 export interface IUserInfo {
+	accountID: string;
 	profile_photo_url: string;
 	name: string;
 	orgInfo: string;
-}
-export interface IFolderEntry {
-	text: string;
-	link: string;
-	path: string;
-	type: "folder" | "htmlfile" | "datafolder"
-}
-export interface IWikiHandlerConstructor {
-	new(): IWikiHandler;
-}
-export interface IWikiHandler {
-	readUserInfo(): Promise<IUserInfo>;
-	readFolder(path: string): Promise<IFolderEntry[]>;
-	readFile(path: string): void;
-	constructor(token: IDropboxToken, mode: string): void;
 }
 
 export interface TiddlyWikiInfo {

@@ -1,62 +1,34 @@
-import { files, users, Dropbox, auth } from 'dropbox';
-import { StatusHandler, dbx_filesListFolder } from './common';
-import { CloudObject } from './async';
+import { StatusHandler, IUserInfo, contains } from './common';
+import { FileFuncs, obs_readdir, IFolderEntry } from './async-types';
+import { Observable } from 'rxjs';
 
 const SESSION_KEY = 'twcloud-dropbox-session';
 const ORIGINAL_KEY = 'twcloud-dropbox-original';
 const SCRIPT_KEY = 'twcloud-dropbox-script';
 const PRELOAD_KEY = 'twcloud-dropbox-preload';
 const SCRIPT_CACHE = "201807041";
-type OpenFileCallback = (stat: files.FileMetadataReference | string) => void;
-type ListFolderResultEntry = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
-interface IDropboxToken {
-	access_token: string,
-	account_id: string,
-	token_type: "bearer",
-	uid: string;
-	state: string;
-	[K: string]: string;
-}
-interface IPreloadInfo {
-	type: string;
-	path: string;
-	user: string;
-	hash: string;
-	token: { [K: string]: string }
-	tokenHash: string;
-}
-export function getAppKey(type: string) {
-	return (type === "full" ? "gy3j4gsa191p31x"
-		: (type === "apps" ? "tu8jc7jsdeg55ta"
-			: ""));
+type OpenFileCallback = (stat: IFolderEntry | string) => void;
+// type ListFolderResultEntry = (files.FileMetadataReference | files.FolderMetadataReference | files.DeletedMetadataReference);
+
+
+function toPromise<T>(obs: Observable<T>): Promise<T[]> {
+	const res: T[] = [];
+	return new Promise((resolve, reject) => {
+		obs.forEach((item) => { res.push(item) }).then(() => resolve(res), reject);
+	})
 }
 
 export class Chooser {
-	cloud: CloudObject;
-	user: users.FullAccount = undefined as any;
-	status: StatusHandler;
-	type: "apps" | "full";
-	token: IDropboxToken = {} as any;
-	filelist: { [K: string]: ListFolderResultEntry } = {};
-	preload: { user: string; path: string; type: "apps" | "full" }
-	getKey() { return getAppKey(this.type); }
 
-	constructor(public container: HTMLDivElement, options: IPreloadInfo) {
-		this.status = new StatusHandler("");
-		if (options.type !== "apps" && options.type !== "full") {
-			this.status.setStatusMessage("type must be apps or full");
-			throw "type must be apps or full";
-		}
-		this.type = options.type;
-		this.cloud = new CloudObject(new Dropbox({ clientId: this.getKey() }));
-		//save the preload info in case we don't have a dropbox token
-		this.preload = {
-			user: options.user,
-			path: options.path,
-			type: options.type
-		};
-		this.token = options.token as any;
-		this.cloud.client.setAccessToken(this.token.access_token);
+	status: StatusHandler;
+	filelist: { [K: string]: IFolderEntry } = {};
+	constructor(
+		public container: HTMLDivElement,
+		public cont: any,
+		public ff: FileFuncs,
+		public userInfo: IUserInfo
+	) {
+		this.status = new StatusHandler(this.userInfo.profile_photo_url);
 	}
 
 	openFile: OpenFileCallback = () => { };
@@ -66,33 +38,12 @@ export class Chooser {
 	loadChooser(callback: OpenFileCallback) {
 		this.openFile = callback;
 
-		this.status = new StatusHandler("");
-		this.status.setStatusMessage("Loading account");
-		Promise.all([
-			this.cloud.filesListFolder({ path: "" }),
-			this.cloud.client.usersGetCurrentAccount(undefined)
-		]).then(([files, _user]) => {
-			this.user = _user;
-			this.status = new StatusHandler(this.user.profile_photo_url || "");
-			if (this.preload.user
-				&& (this.user.account_id !== this.preload.user
-					|| this.token.account_id !== this.preload.user
-					|| this.type !== this.preload.type)
-			) {
-				alert('You are logged into a different dropbox account than the one specified in this link');
-				delete this.preload.user;
-				delete this.preload.path;
-				delete this.preload.type;
-			}
-			if (this.preload.path) return this.openFile(this.preload.path);
+		this.container.appendChild(Chooser.getHeaderElement());
+		this.container.appendChild(this.getUserProfileElement());
+		this.container.appendChild(this.getFilesListElement());
+		this.container.appendChild(Chooser.getFooterElement())
+		this.readFolder("", document.getElementById('twits-files') as Node);
 
-			this.container.appendChild(Chooser.getHeaderElement());
-			this.container.appendChild(this.getUserProfileElement());
-			this.container.appendChild(this.getFilesListElement());
-			this.container.appendChild(Chooser.getFooterElement())
-			this.readFolder(files, document.getElementById('twits-files') as Node);
-			// this.openFile("/arlennotes/arlen-nature/tiddlywiki.info");
-		});
 	}
 	static getHeaderElement() {
 		const header = document.createElement('div');
@@ -121,13 +72,13 @@ export class Chooser {
 		const profile = document.createElement('div')
 		profile.id = "twits-profile";
 		const pic = document.createElement('img');
-		pic.src = this.user.profile_photo_url || "";
+		pic.src = this.userInfo.profile_photo_url || "";
 		pic.classList.add("profile-pic");
 		profile.appendChild(pic);
 		const textdata = document.createElement('span');
-		textdata.innerText = this.user.name.display_name
-			+ (this.user.team ? ("\n" + this.user.team.name) : "");
-		textdata.classList.add(this.user.team ? "profile-name-team" : "profile-name");
+		textdata.innerText = this.userInfo.name
+			+ (this.userInfo.orgInfo ? ("\n" + this.userInfo.orgInfo) : "");
+		textdata.classList.add(this.userInfo.orgInfo ? "profile-name-team" : "profile-name");
 		profile.appendChild(textdata);
 		return profile;
 	}
@@ -154,16 +105,7 @@ export class Chooser {
 `
 		return el;
 	}
-	isFileMetadata(a: any): a is files.FileMetadataReference {
-		return a[".tag"] === "file";
-	}
-	isFolderMetadata(a: any): a is files.FolderMetadataReference {
-		return a[".tag"] === "folder";
-	}
-	isHtmlFile(stat: files.FileMetadataReference) {
-		return ['.htm', '.html'].indexOf(stat.name.slice(stat.name.lastIndexOf('.'))) > -1
-	}
-	isTWInfoFile(stat: files.FileMetadataReference) {
+	isTWInfoFile(stat: IFolderEntry) {
 		return stat.name === "tiddlywiki.info";
 	}
 	getHumanSize(size: number) {
@@ -176,13 +118,15 @@ export class Chooser {
 		return size.toFixed(1) + TAGS[power];
 	}
 
-	streamFilesListFolder(folderpath: string, handler: (entries: files.MetadataReference[]) => void) {
-		this.cloud.filesListFolder({ path: folderpath }).then((entries) => {
-			handler(entries);
-		})
-	}
+	// streamFilesListFolder(folderpath: string, handler: (entries: IFolderEntry[]) => void) {
+	// 	var res: IFolderEntry[];
+	// 	return this.ff.obs_readdir(this.cont)()(folderpath).forEach(([err, files]) => {
+	// 		if(err) throw err;
+	// 		else res = files; 
+	// 	}).then(() => res)
+	// }
 
-	readFolder(folderpath: string | files.MetadataReference[], parentNode: Node) {
+	readFolder(folderpath: string, parentNode: Node) {
 		const pageurl = new URL(location.href);
 		const loadingMessage = document.createElement("div");
 		loadingMessage.innerText = "Loading...";
@@ -194,29 +138,26 @@ export class Chooser {
 		parentNode.appendChild(listParent);
 
 		// const filelist: files.ListFolderResult["entries"] = [];
-		Promise.resolve(Array.isArray(folderpath)
-			? folderpath : this.cloud.filesListFolder({ path: folderpath })
-		).then((stats) => {
-			// filelist.push.apply(filelist, stats);
-			stats.forEach(e => this.filelist[e.path_lower as string] = e as any);
+		const stats: string[] = []
+		return this.ff.obs_readdir(this.cont)()(folderpath).forEach(([err, stats]) => {
 			loadingMessage.innerText = "Loading " + stats.length + "...";
 			loadingMessage.remove();
-			stats.sort((a, b) =>
-				//order by isFolder DESC, name ASC
-				(+this.isFolderMetadata(b) - +this.isFolderMetadata(a)) || a.name.localeCompare(b.name)
-			)
+			stats.forEach(e => { this.filelist[e.fullpath] = e; })
+			stats.sort((a, b) => (
+				+(b.type === "folder") - +(a.type === "folder")) || a.name.localeCompare(b.name)
+			);
 
 			for (var t = 0; t < stats.length; t++) {
 				const stat = stats[t];
 
 				var listItem = document.createElement("div"),
 					classes = [], type = "";
-				if (this.isFolderMetadata(stat)) {
+				if (stat.type === "folder") {
 					classes.push("twits-folder");
 					type = "folder"
-				} else if (this.isFileMetadata(stat)) {
+				} else {
 					classes.push("twits-file");
-					if (this.isHtmlFile(stat)) {
+					if (stat.type === "htmlfile") {
 						classes.push("twits-file-html");
 						type = "files/htmlfile"
 					} else if (this.isTWInfoFile(stat)) {
@@ -230,12 +171,12 @@ export class Chooser {
 
 				var link;
 				classes.push("twits-file-entry");
-				if (this.isFolderMetadata(stat) || (this.isFileMetadata(stat) && (this.isHtmlFile(stat) || this.isTWInfoFile(stat)))) {
+				if (contains(stat.type, ["folder", "htmlfile", "datafolder"])) {
 					link = document.createElement("a");
 					link.href = location.origin + location.pathname + location.search
-						+ "&path=" + encodeURIComponent(stat.path_lower as string)
-						+ "&user=" + encodeURIComponent(this.user.account_id) + location.hash;
-					link.setAttribute("data-twits-path", stat.path_lower as string);
+						+ "&path=" + encodeURIComponent(stat.fullpath)
+						+ "&user=" + encodeURIComponent(this.userInfo.accountID) + location.hash;
+					link.setAttribute("data-twits-path", stat.fullpath);
 					link.addEventListener("click", this.onClickFolderEntry(), false);
 				} else {
 					link = document.createElement("span");
@@ -248,7 +189,7 @@ export class Chooser {
 				link.appendChild(img);
 				link.appendChild(document.createTextNode(stat.name));
 
-				if (this.isFileMetadata(stat) && this.getHumanSize(stat.size)) {
+				if (stat.type !== "folder" && typeof stat.size === "number" && this.getHumanSize(stat.size)) {
 					var size = document.createElement("span");
 					size.appendChild(document.createTextNode(" (" + this.getHumanSize(stat.size) + ")"));
 					link.appendChild(size);
@@ -271,7 +212,7 @@ export class Chooser {
 				var type = this.classList.contains("twits-file-html") ? "htmlfile" :
 					this.classList.contains("twits-file-twinfo") ? "datafolder" : "";
 				var meta = self.filelist[filepath];
-				self.openFile(self.isFileMetadata(meta) ? meta : filepath);
+				self.openFile(meta || filepath);
 			}
 			event.preventDefault();
 			return false;

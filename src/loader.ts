@@ -1,45 +1,18 @@
-import { Chooser } from './chooser';
-import { files } from 'dropbox';
-import { contains, DataFolderState, dumpToArray } from './common';
-import { Observable, Subscriber, of, from, OperatorFunction, zip, empty } from 'rxjs';
-import { reduce, concatMap, map, mapTo, mergeMap, merge, mergeAll, combineAll, tap, count } from 'rxjs/operators';
-import * as path from "path";
-import { override } from './async';
-import { Stats } from './async-dropbox';
+// import { Chooser } from './chooser';
+// import { files } from 'dropbox';
+// import { contains, DataFolderState, dumpToArray, StatusHandler } from './common';
+// import { Observable, Subscriber, of, from, OperatorFunction, zip, empty } from 'rxjs';
+// import { reduce, concatMap, map, mapTo, mergeMap, merge, mergeAll, combineAll, tap, count } from 'rxjs/operators';
+// import * as path from "path";
+// import { override } from './async';
+// // import { Stats, Container, CloudObject } from './async-dropbox';
 
-interface MyWindow extends Window {
-	[K: string]: any;
-}
-declare var window: MyWindow;
+// interface MyWindow extends Window {
+// 	[K: string]: any;
+// }
+// declare var window: MyWindow;
 
-export function handleDatafolder(chooser: Chooser, stat: files.FileMetadata) {
-	// let cloud = chooser.cloud;
-	override((window as any).$tw, chooser.cloud);
-	let clear = setInterval(() => {
-		chooser.status.setStatusMessage(chooser.cloud.requestFinishCount + "/" + chooser.cloud.requestStartCount)
-	}, 100);
-	var folderPath = path.dirname(stat.path_lower as string);
-	console.time('handleDatafolder')
-	return chooser.cloud.filesListFolder({ path: folderPath }).then(files => {
-		// for now let's not make any changes until I've tested everything
-		// let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
-		// if (index === -1)
-		// 	return chooser.cloud.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
-		// else
-			return Promise.resolve(true);
-	}).then(() => {
-		return new Promise(resolve => {
-			console.timeEnd('handleDatafolder');
-			console.time('tiddlywikiboot');
-			window.$tw.boot.wikiPath = folderPath;
-			window.$tw.boot.boot(resolve);
-		});
-	}).then(() => {
-		console.timeEnd('tiddlywikiboot');
-		clearInterval(clear);
-		chooser.status.clearStatusMessage();
-	})
-}
+// export 
 
 			//dump the tiddlers into an array
 			// .pipe(dumpToArray())

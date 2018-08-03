@@ -1,36 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const path = require("path");
-const async_1 = require("./async");
-function handleDatafolder(chooser, stat) {
-    // let cloud = chooser.cloud;
-    async_1.override(window.$tw, chooser.cloud);
-    let clear = setInterval(() => {
-        chooser.status.setStatusMessage(chooser.cloud.requestFinishCount + "/" + chooser.cloud.requestStartCount);
-    }, 100);
-    var folderPath = path.dirname(stat.path_lower);
-    console.time('handleDatafolder');
-    return chooser.cloud.filesListFolder({ path: folderPath }).then(files => {
-        // for now let's not make any changes until I've tested everything
-        // let index = files.findIndex(e => Stats.isFolderMetadata(e) && e.name === "tiddlers");
-        // if (index === -1)
-        // 	return chooser.cloud.filesCreateFolder({ path: path.join(folderPath, "tiddlers") }).catch(() => true)
-        // else
-        return Promise.resolve(true);
-    }).then(() => {
-        return new Promise(resolve => {
-            console.timeEnd('handleDatafolder');
-            console.time('tiddlywikiboot');
-            window.$tw.boot.wikiPath = folderPath;
-            window.$tw.boot.boot(resolve);
-        });
-    }).then(() => {
-        console.timeEnd('tiddlywikiboot');
-        clearInterval(clear);
-        chooser.status.clearStatusMessage();
-    });
-}
-exports.handleDatafolder = handleDatafolder;
+// export 
 //dump the tiddlers into an array
 // .pipe(dumpToArray())
 //determine the tiddlers to be preloaded
@@ -68,4 +38,4 @@ exports.handleDatafolder = handleDatafolder;
 //why on earth am I doing this like this? This is crazy.
 //I think it is the only way to do it. Once I do it I'll figure out what to do different.
 //I like the new rxjs
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoibG9hZGVyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsibG9hZGVyLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7O0FBS0EsNkJBQTZCO0FBQzdCLG1DQUFtQztBQVFuQywwQkFBaUMsT0FBZ0IsRUFBRSxJQUF3QjtJQUMxRSw2QkFBNkI7SUFDN0IsZ0JBQVEsQ0FBRSxNQUFjLENBQUMsR0FBRyxFQUFFLE9BQU8sQ0FBQyxLQUFLLENBQUMsQ0FBQztJQUM3QyxJQUFJLEtBQUssR0FBRyxXQUFXLENBQUM7UUFDdkIsT0FBTyxDQUFDLE1BQU0sQ0FBQyxnQkFBZ0IsQ0FBQyxPQUFPLENBQUMsS0FBSyxDQUFDLGtCQUFrQixHQUFHLEdBQUcsR0FBRyxPQUFPLENBQUMsS0FBSyxDQUFDLGlCQUFpQixDQUFDLENBQUE7SUFDMUcsQ0FBQyxFQUFFLEdBQUcsQ0FBQyxDQUFDO0lBQ1IsSUFBSSxVQUFVLEdBQUcsSUFBSSxDQUFDLE9BQU8sQ0FBQyxJQUFJLENBQUMsVUFBb0IsQ0FBQyxDQUFDO0lBQ3pELE9BQU8sQ0FBQyxJQUFJLENBQUMsa0JBQWtCLENBQUMsQ0FBQTtJQUNoQyxNQUFNLENBQUMsT0FBTyxDQUFDLEtBQUssQ0FBQyxlQUFlLENBQUMsRUFBRSxJQUFJLEVBQUUsVUFBVSxFQUFFLENBQUMsQ0FBQyxJQUFJLENBQUMsS0FBSztRQUNwRSxrRUFBa0U7UUFDbEUsd0ZBQXdGO1FBQ3hGLG9CQUFvQjtRQUNwQix5R0FBeUc7UUFDekcsT0FBTztRQUNOLE1BQU0sQ0FBQyxPQUFPLENBQUMsT0FBTyxDQUFDLElBQUksQ0FBQyxDQUFDO0lBQy9CLENBQUMsQ0FBQyxDQUFDLElBQUksQ0FBQztRQUNQLE1BQU0sQ0FBQyxJQUFJLE9BQU8sQ0FBQyxPQUFPO1lBQ3pCLE9BQU8sQ0FBQyxPQUFPLENBQUMsa0JBQWtCLENBQUMsQ0FBQztZQUNwQyxPQUFPLENBQUMsSUFBSSxDQUFDLGdCQUFnQixDQUFDLENBQUM7WUFDL0IsTUFBTSxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsUUFBUSxHQUFHLFVBQVUsQ0FBQztZQUN0QyxNQUFNLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxJQUFJLENBQUMsT0FBTyxDQUFDLENBQUM7UUFDL0IsQ0FBQyxDQUFDLENBQUM7SUFDSixDQUFDLENBQUMsQ0FBQyxJQUFJLENBQUM7UUFDUCxPQUFPLENBQUMsT0FBTyxDQUFDLGdCQUFnQixDQUFDLENBQUM7UUFDbEMsYUFBYSxDQUFDLEtBQUssQ0FBQyxDQUFDO1FBQ3JCLE9BQU8sQ0FBQyxNQUFNLENBQUMsa0JBQWtCLEVBQUUsQ0FBQztJQUNyQyxDQUFDLENBQUMsQ0FBQTtBQUNILENBQUM7QUEzQkQsNENBMkJDO0FBRUUsaUNBQWlDO0FBQ2pDLHVCQUF1QjtBQUN2Qix3Q0FBd0M7QUFDeEMsMEJBQTBCO0FBQzFCLHFDQUFxQztBQUNyQyx1QkFBdUI7QUFDdkIsK0JBQStCO0FBQy9CLDJDQUEyQztBQUMzQywyR0FBMkc7QUFDM0csZ0NBQWdDO0FBQ2hDLGtEQUFrRDtBQUNsRCx3R0FBd0c7QUFDeEcsOENBQThDO0FBQzlDLE1BQU07QUFDTixNQUFNO0FBQ04sTUFBTTtBQUNOLHFDQUFxQztBQUNyQyx1QkFBdUI7QUFDdkIsdUNBQXVDO0FBQ3ZDLDZDQUE2QztBQUM3QywyQkFBMkI7QUFDM0IsaUdBQWlHO0FBQ2pHLHNDQUFzQztBQUN0Qyx1QkFBdUI7QUFDdkIsdURBQXVEO0FBQ3ZELG9HQUFvRztBQUNwRyw4QkFBOEI7QUFDOUIsa0VBQWtFO0FBQ2xFLDBDQUEwQztBQUMxQyw4RkFBOEY7QUFDOUYsNkNBQTZDO0FBQzdDLDRGQUE0RjtBQUM1Riw0RUFBNEU7QUFDNUUscURBQXFEO0FBQ3JELHdEQUF3RDtBQUN4RCx5RkFBeUY7QUFDekYscUJBQXFCIn0=
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoibG9hZGVyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsibG9hZGVyLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7O0FBY0EsVUFBVTtBQUVQLGlDQUFpQztBQUNqQyx1QkFBdUI7QUFDdkIsd0NBQXdDO0FBQ3hDLDBCQUEwQjtBQUMxQixxQ0FBcUM7QUFDckMsdUJBQXVCO0FBQ3ZCLCtCQUErQjtBQUMvQiwyQ0FBMkM7QUFDM0MsMkdBQTJHO0FBQzNHLGdDQUFnQztBQUNoQyxrREFBa0Q7QUFDbEQsd0dBQXdHO0FBQ3hHLDhDQUE4QztBQUM5QyxNQUFNO0FBQ04sTUFBTTtBQUNOLE1BQU07QUFDTixxQ0FBcUM7QUFDckMsdUJBQXVCO0FBQ3ZCLHVDQUF1QztBQUN2Qyw2Q0FBNkM7QUFDN0MsMkJBQTJCO0FBQzNCLGlHQUFpRztBQUNqRyxzQ0FBc0M7QUFDdEMsdUJBQXVCO0FBQ3ZCLHVEQUF1RDtBQUN2RCxvR0FBb0c7QUFDcEcsOEJBQThCO0FBQzlCLGtFQUFrRTtBQUNsRSwwQ0FBMEM7QUFDMUMsOEZBQThGO0FBQzlGLDZDQUE2QztBQUM3Qyw0RkFBNEY7QUFDNUYsNEVBQTRFO0FBQzVFLHFEQUFxRDtBQUNyRCx3REFBd0Q7QUFDeEQseUZBQXlGO0FBQ3pGLHFCQUFxQiJ9

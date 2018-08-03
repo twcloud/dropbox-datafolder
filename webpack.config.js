@@ -4,7 +4,7 @@ module.exports = {
   mode: "development",
   watch: true,
   entry: {
-    "twits": path.resolve(__dirname, './src/index.js')
+    "twitsdropbox": path.resolve(__dirname, './src/index-dropbox.js')
   },
   resolve:{
     alias: {

@@ -1,0 +1,28 @@
+{
+  "name": "datafolder",
+  "version": "1.0.0",
+  "description": "This tool loads datafolders straight off Dropbox and then syncs changes back to Dropbox in real time.",
+  "main": "src/index.js",
+  "dependencies": {
+    "buffer": "^5.1.0",
+    "dropbox": "^4.0.9",
+    "path": "^0.12.7",
+    "pouchdb": "^7.0.0",
+    "rxjs": "^6.2.2",
+    "source-map-support": "^0.5.6"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twcloud/twits-datafolder.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/twcloud/twits-datafolder/issues"
+  },
+  "homepage": "https://github.com/twcloud/twits-datafolder#readme"
+}
